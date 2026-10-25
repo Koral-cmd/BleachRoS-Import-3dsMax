@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: |
           $log = "build_${{ matrix.year }}.log"
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBLEACH_BUILD_PLUGIN=ON -DBLEACH_BUILD_TOOL=ON `
+          cmake -S . -B build -A x64 -DBLEACH_BUILD_PLUGIN=ON -DBLEACH_BUILD_TOOL=ON `
                 -D3DSMAX_SDK_DIR="$env:SDK_DIR" -DMAX_VERSION=${{ matrix.year }} *>&1 | Tee-Object -FilePath $log
           $rc = $LASTEXITCODE
           if (-not $rc) {
