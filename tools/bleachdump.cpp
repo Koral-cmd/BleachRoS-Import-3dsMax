@@ -15,6 +15,9 @@
 
 #include <cstdio>
 #include <cstring>
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 #include <string>
 #include <vector>
 
@@ -80,6 +83,9 @@ static int DumpModels(const std::vector<std::string>& files, Skeleton* skelOut) 
 }
 
 int main(int argc, char** argv) {
+#if defined(_WIN32)
+    SetConsoleOutputCP(65001);   // русский текст в консоли
+#endif
     if (argc < 2) {
         std::printf("bleachdump <file.tmd2|file.tactpkg|file.lds> ...\n");
         return 1;
