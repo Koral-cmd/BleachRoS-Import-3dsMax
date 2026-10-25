@@ -1,0 +1,139 @@
+# ================================================================
+#  Сборка BleachRoSImport.dlu на серверах GitHub (Visual Studio там есть).
+#  Max SDK скачивается с открытого хранилища Autodesk ADN.
+#  Результат: артефакт BleachRoSImport-<версия> (ZIP + Setup.exe),
+#  а при теге v* - GitHub Release с теми же файлами.
+# ================================================================
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plugin:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        year: [2025, 2026, 2027]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Max SDK ${{ matrix.year }}
+        shell: pwsh
+        run: |
+          $y = "${{ matrix.year }}"
+          $urls = @(
+            "https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Max/Autodesk+3ds+Max+$y/SDK_3dsMax$y.msi",
+            "https://autodesk-adn-transfer.s3-us-west-2.amazonaws.com/ADN+Extranet/M%26E/Max/Autodesk+3ds+Max+$y/SDK_3dsMax$y.msi",
+            "https://autodesk-adn-transfer.s3.us-west-2.amazonaws.com/ADN+Extranet/M%26E/Max/Autodesk+3ds+Max+$y/SDK_3dsMax$y.zip"
+          )
+          $ok = $false
+          foreach ($u in $urls) {
+            try {
+              Write-Host "try $u"
+              $out = if ($u.EndsWith(".zip")) { "sdk.zip" } else { "sdk.msi" }
+              Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing
+              if ((Get-Item $out).Length -gt 1000000) { $ok = $true; break }
+            } catch { Write-Host "  нет: $($_.Exception.Message)" }
+          }
+          if (-not $ok) { throw "Max SDK $y не скачался" }
+          $dst = "C:\maxsdk$y"
+          if (Test-Path sdk.msi) {
+            Start-Process msiexec.exe -ArgumentList "/a `"$PWD\sdk.msi`" /qn TARGETDIR=`"$dst`"" -Wait
+          } else {
+            Expand-Archive sdk.zip -DestinationPath $dst
+          }
+          $maxh = Get-ChildItem -Path $dst -Recurse -Filter max.h | Where-Object { $_.DirectoryName -like "*\include" } | Select-Object -First 1
+          if (-not $maxh) { throw "max.h не найден после распаковки" }
+          $sdk = Split-Path $maxh.DirectoryName -Parent
+          Write-Host "SDK: $sdk"
+          "SDK_DIR=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBLEACH_BUILD_PLUGIN=ON -DBLEACH_BUILD_TOOL=ON `
+                -D3DSMAX_SDK_DIR="$env:SDK_DIR" -DMAX_VERSION=${{ matrix.year }}
+          if ($LASTEXITCODE) { exit 1 }
+          cmake --build build --config Release -- /m
+          if ($LASTEXITCODE) { exit 1 }
+          New-Item -ItemType Directory -Force -Path out\${{ matrix.year }} | Out-Null
+          $dlu = Get-ChildItem build -Recurse -Filter BleachRoSImport.dlu | Select-Object -First 1
+          Copy-Item $dlu.FullName out\${{ matrix.year }}\
+          $exe = Get-ChildItem build -Recurse -Filter bleachdump.exe | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName out\ }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dlu-${{ matrix.year }}
+          path: out/
+
+  package:
+    needs: plugin
+    if: always()
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dlu-*
+          path: output
+          merge-multiple: true
+
+      - name: Пакет (ZIP + Setup.exe)
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path src/bleach.h -Pattern 'VERSION_STR\s+_T\("([0-9.]+)"\)').Matches[0].Groups[1].Value
+          $years = Get-ChildItem output -Directory | Where-Object { Test-Path "$($_.FullName)\BleachRoSImport.dlu" }
+          if (-not $years) { throw "ни одна версия не собралась" }
+          Write-Host "версия $ver, Max: $($years.Name -join ', ')"
+          $stage = "dist\stage"
+          New-Item -ItemType Directory -Force -Path "$stage\Contents\MacroScripts","$stage\Contents\Pre-Start-Up_Scripts","$stage\Contents\Post-Start-Up_Scripts" | Out-Null
+          Copy-Item package\BleachRoSImport\PackageContents.xml $stage\
+          foreach ($y in $years) {
+            New-Item -ItemType Directory -Force -Path "$stage\Contents\$($y.Name)" | Out-Null
+            Copy-Item "$($y.FullName)\BleachRoSImport.dlu" "$stage\Contents\$($y.Name)\"
+          }
+          Copy-Item scripts\BleachImport.mcr "$stage\Contents\MacroScripts\"
+          Copy-Item scripts\BleachMenu_2025_2027.ms "$stage\Contents\Pre-Start-Up_Scripts\"
+          Copy-Item scripts\BleachMenu_2016_2024.ms "$stage\Contents\Post-Start-Up_Scripts\"
+
+          # ZIP: Contents\<год>, скрипты, PackageContents.xml, INSTALL.bat
+          $zip = "dist\zip"
+          Copy-Item "$stage\Contents" "$zip\Contents" -Recurse
+          Copy-Item scripts\*.ms, scripts\*.mcr "$zip\Contents\"
+          Copy-Item "$stage\PackageContents.xml", INSTALL.bat, UNINSTALL.bat $zip
+          if (Test-Path output\bleachdump.exe) { Copy-Item output\bleachdump.exe $zip }
+          Compress-Archive -Path "$zip\*" -DestinationPath "dist\BleachRoSImport-$ver.zip" -Force
+
+          choco install innosetup --no-progress -y | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVer=$ver" installer\BleachRoSImport.iss
+          if ($LASTEXITCODE) { exit 1 }
+          Get-ChildItem dist\*.zip, dist\*.exe | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { $_.Hash + '  ' + (Split-Path $_.Path -Leaf) } | Out-File -Encoding ascii dist\SHA256SUMS.txt
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BleachRoSImport
+          path: |
+            dist/*.zip
+            dist/*.exe
+            dist/SHA256SUMS.txt
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.exe
+            dist/SHA256SUMS.txt

@@ -4,7 +4,9 @@
 ;  папка Contents перед установкой очищается (без остатков старых .dlu).
 ;  Собирается из installer\BUILD_RELEASE.bat.
 ; ================================================================
-#define AppVer "1.0.0"
+#ifndef AppVer
+  #define AppVer "1.0.0"
+#endif
 #define Stage "..\dist\stage"
 
 [Setup]
