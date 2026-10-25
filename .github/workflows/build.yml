@@ -76,11 +76,10 @@ jobs:
             Get-Content $log | Select-Object -Last 400 | Out-File ci\build_${{ matrix.year }}.txt -Encoding utf8
             "SDK_DIR=$env:SDK_DIR" | Out-File ci\build_${{ matrix.year }}.txt -Append -Encoding utf8
             Get-ChildItem $env:SDK_DIR\lib -Recurse -Filter *.lib | Select-Object -First 80 | ForEach-Object { $_.FullName } | Out-File ci\build_${{ matrix.year }}.txt -Append -Encoding utf8
-            git fetch origin ci-logs 2>$null
-            git checkout -B ci-logs 2>$null
+            git checkout -B ci-log-${{ matrix.year }} 2>$null
             git add -f ci\build_${{ matrix.year }}.txt
             git commit -m "ci log ${{ matrix.year }}" 2>$null
-            for ($i = 0; $i -lt 5; $i++) { git pull --rebase origin ci-logs 2>$null; git push origin ci-logs; if (-not $LASTEXITCODE) { break } }
+            git push -f origin ci-log-${{ matrix.year }}
             exit 1
           }
           New-Item -ItemType Directory -Force -Path out\${{ matrix.year }} | Out-Null
