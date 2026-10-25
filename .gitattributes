@@ -1,0 +1,8 @@
+*.bat text eol=crlf
+*.iss text eol=crlf
+*.rc text eol=crlf
+*.ms text eol=crlf
+*.mcr text eol=crlf
+*.tmd2 binary
+*.lds binary
+*.tactpkg binary
