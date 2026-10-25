@@ -25,16 +25,18 @@
 
 ## Установка
 
-### Готовый архив / Setup.exe
-- **Setup.exe**: запусти — он ставит пакет в
-  `C:\ProgramData\Autodesk\ApplicationPlugins\BleachRoSImport`.
+### Готовая сборка (Visual Studio не нужна)
+Плагин собирается автоматически на GitHub (Max 2025/2026/2027) — скачай из
+[Releases](https://github.com/Koral-cmd/BleachRoS-Import-3dsMax/releases/latest):
+- **`BleachRoSImport-<версия>-Setup.exe`** — закрой 3ds Max и запусти. Ставит пакет в
+  `C:\ProgramData\Autodesk\ApplicationPlugins\BleachRoSImport` и Visual C++ Runtime.
   Новая версия ставится **поверх старой** (тот же AppId), старые `.dlu` удаляются.
-- **ZIP**: распакуй и запусти `INSTALL.bat` (сам попросит права администратора;
-  без них поставит в `%AppData%`). Повторный запуск с новой версией = обновление.
+- **`BleachRoSImport-<версия>.zip`** — распакуй и запусти `INSTALL.bat` (сам попросит
+  права администратора; без них поставит в `%AppData%`). Повторный запуск новой версии = обновление.
 
-3ds Max перед установкой нужно закрыть. После запуска Max: меню **Bleach Tool**.
+После запуска Max появится меню **Bleach Tool**.
 
-### Сборка из исходников (один батник)
+### Сборка у себя (если нужно)
 Нужно: Visual Studio 2022/2026 с C++ и CMake, 3ds Max SDK в
 `C:\Program Files\Autodesk\3ds Max <год> SDK\maxsdk`.
 
