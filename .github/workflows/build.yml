@@ -131,8 +131,10 @@ jobs:
           Copy-Item scripts\*.ms, scripts\*.mcr "$zip\Contents\"
           Copy-Item "$stage\PackageContents.xml", INSTALL.bat, UNINSTALL.bat $zip
           if (Test-Path output\bleachdump.exe) { Copy-Item output\bleachdump.exe $zip }
-          Compress-Archive -Path "$zip\*" -DestinationPath "dist\BleachRoSImport-$ver.zip" -Force
 
+          Invoke-WebRequest -Uri "https://aka.ms/vc14/vc_redist.x64.exe" -OutFile installer\vc_redist.x64.exe -UseBasicParsing
+          Copy-Item installer\vc_redist.x64.exe $zip
+          Compress-Archive -Path "$zip\*" -DestinationPath "dist\BleachRoSImport-$ver.zip" -Force
           choco install innosetup --no-progress -y | Out-Null
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVer=$ver" installer\BleachRoSImport.iss
           if ($LASTEXITCODE) { exit 1 }

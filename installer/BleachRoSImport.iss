@@ -37,6 +37,13 @@ Type: filesandordirs; Name: "{userappdata}\Autodesk\ApplicationPlugins\BleachRoS
 
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+#ifexist "vc_redist.x64.exe"
+Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
+[Run]
+; Visual C++ Runtime 14.x (плагину нужна свежая версия; если уже стоит - ничего не меняет)
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ Runtime..."; Flags: waituntilterminated
+#endif
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

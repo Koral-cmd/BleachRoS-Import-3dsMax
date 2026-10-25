@@ -80,6 +80,12 @@ rmdir /s /q "%STAGE%" >nul 2>&1
 if /i "%DEST%"=="%DEST_ALL%" if exist "%DEST_ME%\PackageContents.xml" rmdir /s /q "%DEST_ME%" >nul 2>&1
 if not exist "%DEST%\PackageContents.xml" goto copy_failed
 
+REM ---- Visual C++ Runtime (если лежит рядом - тихо ставим/обновляем) ----
+if exist "%~dp0vc_redist.x64.exe" (
+  echo Visual C++ Runtime ...
+  "%~dp0vc_redist.x64.exe" /install /quiet /norestart
+)
+
 echo.
 echo ГОТОВО (%FOUND% версий Max). Запусти 3ds Max: меню "Bleach Tool".
 goto end
