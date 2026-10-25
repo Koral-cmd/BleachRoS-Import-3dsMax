@@ -1,0 +1,64 @@
+// Идентификаторы диалогов (bleach.rc). Тексты ставятся из кода (UTF-8 -> UTF-16).
+#pragma once
+
+#define IDD_MODEL        101
+#define IDD_ANIM         102
+
+#define IDC_M_FOLDER_LBL 1001
+#define IDC_M_FOLDER     1002
+#define IDC_M_BROWSE     1003
+#define IDC_M_FIND       1004
+#define IDC_M_QUAL_LBL   1005
+#define IDC_M_QUALITY    1006
+#define IDC_M_SEARCH_LBL 1007
+#define IDC_M_SEARCH     1008
+#define IDC_M_RESCAN     1009
+#define IDC_M_CHARS      1010
+#define IDC_M_PARTS      1011
+#define IDC_M_ADDFILE    1012
+#define IDC_M_ALL        1013
+#define IDC_M_NONE       1014
+#define IDC_M_OPTGROUP   1015
+#define IDC_M_TEX        1016
+#define IDC_M_VCOL       1017
+#define IDC_M_WELD       1018
+#define IDC_M_SKIN       1019
+#define IDC_M_ALPHA      1020
+#define IDC_M_BONE_LBL   1021
+#define IDC_M_BONESTYLE  1022
+#define IDC_M_UNITS_LBL  1023
+#define IDC_M_UNITS      1024
+#define IDC_M_SCALE_LBL  1025
+#define IDC_M_SCALE      1026
+#define IDC_M_ATTACH_LBL 1027
+#define IDC_M_ATTACH     1028
+#define IDC_M_STATUS     1029
+#define IDC_M_ANIMS      1030
+#define IDC_M_LODS       1031
+
+#define IDC_A_RIG_LBL    1101
+#define IDC_A_RIG        1102
+#define IDC_A_REFRESH    1103
+#define IDC_A_PACK_LBL   1104
+#define IDC_A_PACK       1105
+#define IDC_A_OPEN       1106
+#define IDC_A_SEARCH_LBL 1107
+#define IDC_A_SEARCH     1108
+#define IDC_A_COUNT      1109
+#define IDC_A_CLIPS      1110
+#define IDC_A_MODE_LBL   1111
+#define IDC_A_MODE       1112
+#define IDC_A_ORDER_LBL  1113
+#define IDC_A_ORDER      1114
+#define IDC_A_FPS_LBL    1115
+#define IDC_A_FPS        1116
+#define IDC_A_GAP_LBL    1117
+#define IDC_A_GAP        1118
+#define IDC_A_NOTES      1119
+#define IDC_A_APPEND     1120
+#define IDC_A_LOAD       1121
+#define IDC_A_LOADALL    1122
+#define IDC_A_BIND       1123
+#define IDC_A_SEQ_LBL    1124
+#define IDC_A_SEQ        1125
+#define IDC_A_STATUS     1126

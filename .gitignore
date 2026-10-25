@@ -1,0 +1,7 @@
+build_*/
+output/
+dist/
+BUILD.log
+*.user
+.vs/
+tests/samples/*.tmd2.out

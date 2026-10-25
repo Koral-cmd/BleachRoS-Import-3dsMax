@@ -1,0 +1,8 @@
+; Экспорт без LIBRARY (иначе LNK4070 из-за расширения .dlu)
+EXPORTS
+    LibDescription       @1
+    LibNumberClasses     @2
+    LibClassDesc         @3
+    LibVersion           @4
+    CanAutoDefer         @5
+    LibInitialize        @6

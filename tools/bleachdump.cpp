@@ -1,0 +1,136 @@
+// ============================================================
+//  bleachdump - консольная проверка тех же читателей, что в плагине.
+//
+//    bleachdump model.tmd2 [ещё.tmd2 ...]   модель(и), скелет, меши
+//    bleachdump pack.tactpkg                 список клипов
+//    bleachdump pack.tactpkg clip model.tmd2 [ещё.tmd2]
+//                                            клип на скелет: совпадения, режим
+//    bleachdump tex.lds                      текстуры
+//
+//  Вывод - обычный текст; его удобно прислать при проблемах.
+// ============================================================
+#include "tam_anim.h"
+#include "tam_assemble.h"
+#include "tam_formats.h"
+
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+using namespace tam;
+
+static bool EndsWith(const std::string& s, const char* e) {
+    const size_t n = std::strlen(e);
+    if (s.size() < n) return false;
+    for (size_t i = 0; i < n; ++i) {
+        char a = s[s.size() - n + i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
+        if (a != e[i]) return false;
+    }
+    return true;
+}
+
+static int DumpModels(const std::vector<std::string>& files, Skeleton* skelOut) {
+    std::vector<Tmd2> tmds(files.size());
+    for (size_t i = 0; i < files.size(); ++i) {
+        std::string err;
+        if (!LoadTmd2(files[i], tmds[i], err)) {
+            std::printf("ERROR %s\n", err.c_str());
+            return 1;
+        }
+        std::printf("%s", tmds[i].Report().c_str());
+        for (size_t b = 0; b < tmds[i].bones.size(); ++b) {
+            const Tmd2Bone& k = tmds[i].bones[b];
+            std::printf("  bone %zu %s hash=%u parent=%d extra=%d\n", b, k.name.c_str(), k.hash, k.parent, k.extra);
+        }
+    }
+    std::vector<Part> parts(tmds.size());
+    for (size_t i = 0; i < tmds.size(); ++i) parts[i].tmd = &tmds[i];
+    Skeleton skel;
+    BuildOptions opt;
+    std::vector<std::string> log;
+    BuildSkeleton(parts, skel, opt, log);
+    for (const std::string& l : log) std::printf("%s\n", l.c_str());
+    std::printf("SKELETON %zu\n", skel.bones.size());
+    for (size_t i = 0; i < skel.bones.size(); ++i) {
+        const SkelBone& b = skel.bones[i];
+        std::printf("  S %zu %s parent=%d world_t=(%.5f %.5f %.5f) local_t=(%.5f %.5f %.5f) src=%s\n", i, b.name.c_str(),
+                    b.parent, b.bindWorld.m[12], b.bindWorld.m[13], b.bindWorld.m[14], b.bindLocal.m[12],
+                    b.bindLocal.m[13], b.bindLocal.m[14], b.source.c_str());
+    }
+    for (size_t p = 0; p < parts.size(); ++p) {
+        std::vector<PartMesh> meshes;
+        BuildMeshes(parts, static_cast<int>(p), skel, opt, meshes);
+        for (const PartMesh& m : meshes) {
+            double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 };
+            for (size_t v = 0; v * 3 < m.pos.size(); ++v)
+                for (int a = 0; a < 3; ++a) {
+                    lo[a] = std::min(lo[a], static_cast<double>(m.pos[v * 3 + a]));
+                    hi[a] = std::max(hi[a], static_cast<double>(m.pos[v * 3 + a]));
+                }
+            size_t wsum = m.wBone.size();
+            std::printf("  MESH %s/%s verts=%zu faces=%zu mats=%zu maps=%zu weights=%zu degenerate=%zu bbox=(%.4f %.4f %.4f)-(%.4f %.4f %.4f)\n",
+                        parts[p].tmd->name.c_str(), m.name.c_str(), m.pos.size() / 3, m.faces.size() / 3,
+                        m.materials.size(), m.maps.size(), wsum, m.degenerate, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+        }
+    }
+    if (skelOut != nullptr) *skelOut = skel;
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::printf("bleachdump <file.tmd2|file.tactpkg|file.lds> ...\n");
+        return 1;
+    }
+    const std::string a1 = argv[1];
+    if (EndsWith(a1, ".lds")) {
+        Lds l;
+        std::string err;
+        if (!LoadLds(a1, l, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+        for (size_t i = 0; i < l.textures.size(); ++i) {
+            const DdsInfo d = InspectDds(l.textures[i]);
+            std::printf("  tex %zu %s %dx%d alpha=%d bytes=%zu\n", i, d.format.c_str(), d.width, d.height, d.alpha ? 1 : 0,
+                        l.textures[i].size());
+        }
+        return 0;
+    }
+    if (EndsWith(a1, ".tactpkg")) {
+        TactPkg p;
+        std::string err;
+        if (!LoadTact(a1, p, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+        std::printf("TACTPKG %s clips=%zu\n", p.name.c_str(), p.clips.size());
+        for (const std::string& o : p.other) std::printf("  other %s\n", o.c_str());
+        for (size_t i = 0; i < p.clips.size(); ++i)
+            std::printf("  clip %zu %s frames=%d bones=%d\n", i, p.clips[i].name.c_str(), p.clips[i].frames, p.clips[i].bones);
+        if (argc >= 4) {
+            const std::string clipName = argv[2];
+            std::vector<std::string> files;
+            for (int i = 3; i < argc; ++i) files.push_back(argv[i]);
+            Skeleton skel;
+            if (DumpModels(files, &skel) != 0) return 1;
+            for (size_t i = 0; i < p.clips.size(); ++i) {
+                if (p.clips[i].name != clipName) continue;
+                Tmo t;
+                if (!p.Clip(i, t, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+                AnimSettings s;
+                const ClipMatch m = MatchClip(t, skel, s);
+                std::printf("%s\n", DescribeMatch(t, m).c_str());
+                for (const std::string& w : t.warnings) std::printf("  [!] %s\n", w.c_str());
+                std::vector<std::vector<M4>> poses;
+                std::vector<char> anim;
+                EvaluateClip(t, skel, s, m, poses, anim);
+                for (size_t b = 0; b < skel.bones.size(); ++b) {
+                    const M4& w0 = poses.front()[b];
+                    std::printf("  F0 %s anim=%d t=(%.5f %.5f %.5f) dAngleToBind=%.2f\n", skel.bones[b].name.c_str(), anim[b],
+                                w0.m[12], w0.m[13], w0.m[14], AngleDeg(w0, skel.bones[b].bindWorld));
+                }
+            }
+        }
+        return 0;
+    }
+    std::vector<std::string> files;
+    for (int i = 1; i < argc; ++i) files.push_back(argv[i]);
+    return DumpModels(files, nullptr);
+}

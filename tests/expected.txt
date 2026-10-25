@@ -1,0 +1,101 @@
+TMD2 pl999_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=3 tables=2
+  layout: pos w0 i0 w1 i1 nrm col uv0
+  model 'body' parts=2
+  mat #0 hash=3854289069 shader=BSS1 tex=1 params=32
+  mat #1 hash=652697143 shader=BHA1 tex=1 params=15
+  bone 0 root hash=3100815632 parent=-1 extra=-1
+  bone 1 spine hash=2618136226 parent=0 extra=-1
+  bone 2 head hash=165002967 parent=1 extra=-1
+TMD2 pl999_hair00_00: ver=0x209 flags=0xB496 stride=44 verts=3 tris=1 models=1 mats=1 tex=1 bones=3 tables=0
+  layout: pos w0 i0 w1 i1 nrm col uv0
+  model 'hair' parts=1
+  mat #0 hash=2140110309 shader=BHA1 tex=1 params=15
+  bone 0 spine hash=2618136226 parent=-1 extra=-1
+  bone 1 head hash=165002967 parent=0 extra=-1
+  bone 2 hair_A00 hash=1248523403 parent=1 extra=-1
+TMD2 pl999_wep00_00: ver=0x209 flags=0x2416 stride=28 verts=3 tris=1 models=1 mats=1 tex=1 bones=2 tables=0
+  layout: pos w0 i0 nrm uv0
+  model 'blade' parts=1
+  mat #0 hash=1068423836 shader=BSS1 tex=1 params=1
+  bone 0 wep_root hash=707761122 parent=-1 extra=-1
+  bone 1 wep_tip hash=1764741287 parent=0 extra=-1
+  pl999_wep00_00: общих костей нет, кость для прицепления не найдена - остаётся в начале координат
+SKELETON 6
+  S 0 root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl999_cos00_00
+  S 1 spine parent=0 world_t=(0.00000 1.00000 0.00000) local_t=(0.00000 1.00000 0.00000) src=pl999_cos00_00
+  S 2 head parent=1 world_t=(-0.00000 1.60000 0.00000) local_t=(-0.00000 0.60000 0.00000) src=pl999_cos00_00
+  S 3 hair_A00 parent=2 world_t=(0.00000 1.90000 0.00000) local_t=(0.08866 0.28660 0.00000) src=pl999_hair00_00
+  S 4 wep_root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl999_wep00_00
+  S 5 wep_tip parent=4 world_t=(0.00000 0.00000 1.00000) local_t=(0.00000 0.00000 1.00000) src=pl999_wep00_00
+  MESH pl999_cos00_00/body verts=6 faces=4 mats=2 maps=2 weights=8 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(1.0000 1.6000 0.0000)
+  MESH pl999_hair00_00/hair verts=3 faces=1 mats=1 maps=2 weights=3 degenerate=0 bbox=(0.0000 1.8000 0.0000)-(1.0000 2.0000 0.0000)
+  MESH pl999_wep00_00/blade verts=3 faces=1 mats=1 maps=1 weights=3 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(0.0000 0.1000 1.0000)
+TMD2 pl998_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=4 tables=2
+  layout: pos w0 i0 w1 i1 nrm col uv0
+  model 'body' parts=2
+  mat #0 hash=175743891 shader=BSS1 tex=1 params=32
+  mat #1 hash=3374658825 shader=BHA1 tex=1 params=15
+  bone 0 root hash=3100815632 parent=-1 extra=-1
+  bone 1 spine hash=2618136226 parent=0 extra=-1
+  bone 2 head hash=165002967 parent=1 extra=-1
+  bone 3 weapon_R hash=265202802 parent=1 extra=-1
+TMD2 pl999_wep00_00: ver=0x209 flags=0x2416 stride=28 verts=3 tris=1 models=1 mats=1 tex=1 bones=2 tables=0
+  layout: pos w0 i0 nrm uv0
+  model 'blade' parts=1
+  mat #0 hash=1068423836 shader=BSS1 tex=1 params=1
+  bone 0 wep_root hash=707761122 parent=-1 extra=-1
+  bone 1 wep_tip hash=1764741287 parent=0 extra=-1
+  pl999_wep00_00: общих костей нет -> прицеплен к 'weapon_R'
+SKELETON 6
+  S 0 root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl998_cos00_00
+  S 1 spine parent=0 world_t=(0.00000 1.00000 0.00000) local_t=(0.00000 1.00000 0.00000) src=pl998_cos00_00
+  S 2 head parent=1 world_t=(-0.00000 1.60000 0.00000) local_t=(-0.00000 0.60000 0.00000) src=pl998_cos00_00
+  S 3 weapon_R parent=1 world_t=(0.50000 1.20000 0.00000) local_t=(0.50000 0.20000 0.00000) src=pl998_cos00_00
+  S 4 wep_root parent=3 world_t=(0.50000 1.20000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl999_wep00_00
+  S 5 wep_tip parent=4 world_t=(0.50000 1.20000 1.00000) local_t=(0.00000 0.00000 1.00000) src=pl999_wep00_00
+  MESH pl998_cos00_00/body verts=6 faces=4 mats=2 maps=2 weights=8 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(1.0000 1.6000 0.0000)
+  MESH pl999_wep00_00/blade verts=3 faces=1 mats=1 maps=1 weights=3 degenerate=0 bbox=(0.5000 1.2000 0.0000)-(0.5000 1.3000 1.0000)
+  tex 0 DXT1 4x4 alpha=0 bytes=144
+  tex 1 DXT5 4x4 alpha=1 bytes=144
+TACTPKG pl999 clips=2
+  other script.lua (?, 10 Byte)
+  clip 0 idle_delta frames=11 bones=3
+  clip 1 pose_abs frames=5 bones=2
+TMD2 pl999_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=3 tables=2
+  layout: pos w0 i0 w1 i1 nrm col uv0
+  model 'body' parts=2
+  mat #0 hash=3854289069 shader=BSS1 tex=1 params=32
+  mat #1 hash=652697143 shader=BHA1 tex=1 params=15
+  bone 0 root hash=3100815632 parent=-1 extra=-1
+  bone 1 spine hash=2618136226 parent=0 extra=-1
+  bone 2 head hash=165002967 parent=1 extra=-1
+SKELETON 3
+  S 0 root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl999_cos00_00
+  S 1 spine parent=0 world_t=(0.00000 1.00000 0.00000) local_t=(0.00000 1.00000 0.00000) src=pl999_cos00_00
+  S 2 head parent=1 world_t=(-0.00000 1.60000 0.00000) local_t=(-0.00000 0.60000 0.00000) src=pl999_cos00_00
+  MESH pl999_cos00_00/body verts=6 faces=4 mats=2 maps=2 weights=8 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(1.0000 1.6000 0.0000)
+idle_delta: кадров 11, костей в клипе 3, найдено 2, нет в скелете 1, режим delta (авто: abs 0 / delta 1)
+  F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
+  F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
+  F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
+TACTPKG pl999 clips=2
+  other script.lua (?, 10 Byte)
+  clip 0 idle_delta frames=11 bones=3
+  clip 1 pose_abs frames=5 bones=2
+TMD2 pl999_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=3 tables=2
+  layout: pos w0 i0 w1 i1 nrm col uv0
+  model 'body' parts=2
+  mat #0 hash=3854289069 shader=BSS1 tex=1 params=32
+  mat #1 hash=652697143 shader=BHA1 tex=1 params=15
+  bone 0 root hash=3100815632 parent=-1 extra=-1
+  bone 1 spine hash=2618136226 parent=0 extra=-1
+  bone 2 head hash=165002967 parent=1 extra=-1
+SKELETON 3
+  S 0 root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl999_cos00_00
+  S 1 spine parent=0 world_t=(0.00000 1.00000 0.00000) local_t=(0.00000 1.00000 0.00000) src=pl999_cos00_00
+  S 2 head parent=1 world_t=(-0.00000 1.60000 0.00000) local_t=(-0.00000 0.60000 0.00000) src=pl999_cos00_00
+  MESH pl999_cos00_00/body verts=6 faces=4 mats=2 maps=2 weights=8 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(1.0000 1.6000 0.0000)
+pose_abs: кадров 5, костей в клипе 2, найдено 2, нет в скелете 0, режим absolute (авто: abs 2 / delta 0)
+  F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
+  F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
+  F0 head anim=1 t=(0.00000 1.60000 0.00000) dAngleToBind=0.00
