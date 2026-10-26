@@ -1,0 +1,118 @@
+-- Building for: Visual Studio 18 2026
+-- The C compiler identification is MSVC 19.51.36260.0
+-- The CXX compiler identification is MSVC 19.51.36260.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- BleachRoSImport: Max 2025, plugin=ON, tool=ON
+-- Configuring done (16.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: D:/a/BleachRoS-Import-3dsMax/BleachRoS-Import-3dsMax/build
+
+  1>Checking Build System
+  Building Custom Rule D:/a/BleachRoS-Import-3dsMax/BleachRoS-Import-3dsMax/CMakeLists.txt
+  tam_formats.cpp
+  tam_assemble.cpp
+  tam_anim.cpp
+  bleach_core.cpp
+  lang.cpp
+  Generating Code...
+  miniz_tinfl.c
+  tamcore.vcxproj -> D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\build\Release\tamcore.lib
+  Building Custom Rule D:/a/BleachRoS-Import-3dsMax/BleachRoS-Import-3dsMax/CMakeLists.txt
+  Building Custom Rule D:/a/BleachRoS-Import-3dsMax/BleachRoS-Import-3dsMax/CMakeLists.txt
+  bleach_max.cpp
+  bleachdump.cpp
+D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\src\bleach_max.cpp(934,33): error C2660: 'CustAttrib::GetName': function does not take 0 arguments [D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\build\BleachRoSImport.vcxproj]
+      C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\include\custattrib.h(46,23):
+      see declaration of 'CustAttrib::GetName'
+      D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\src\bleach_max.cpp(934,33):
+      while trying to match the argument list '()'
+  
+D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\src\bleach_max.cpp(1029,98): error C2660: 'CustAttrib::GetName': function does not take 0 arguments [D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\build\BleachRoSImport.vcxproj]
+      C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\include\custattrib.h(46,23):
+      see declaration of 'CustAttrib::GetName'
+      D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\src\bleach_max.cpp(1029,98):
+      while trying to match the argument list '()'
+  
+  bleach_dll.cpp
+  bleachdump.vcxproj -> D:\a\BleachRoS-Import-3dsMax\BleachRoS-Import-3dsMax\build\bin\bleachdump.exe
+  bleach_ui.cpp
+  Generating Code...
+SDK_DIR=C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\acap.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\AmgTranslator.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\assetmanagement.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ATSCore.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\biped.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\bmm.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\bonesDef.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\CommonRendererUI.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\comsrv.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\core.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\crowd.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\CustDlg.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\CustomFileStreamAPI.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\DataBridge.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\DefaultRenderItems.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\edmodel.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ExchangeStorePackageManager.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\expr.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\flt.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\FragmentGraph.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\Geom.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\gfx.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\GraphicsDriver.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\GraphicsUtility.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\gup.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\IGame.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\imageViewers.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ManipSys.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MaxGraphicsObjects.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\maxnet.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MaxQtBridge.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\Maxscrpt.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\maxutil.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MenuMan.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\mesh.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MeshValidator.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MNMath.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\MouseCursors.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\NotificationAPIUtils.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\NotificationSystem.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\oiio_tx.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\optimesh.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\OSLMap.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\Paramblk2.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\particle.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\particleflow.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ParticleFlowTools.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\physique.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\PlyImportCodec.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\PointCloud.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\Poly.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\PolyPaint.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\populate.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\RapidRTCore.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\RenderingAPI.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\RenderUtil.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\rtmax.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\SceneScriptSecurityManager.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\SkinEngine.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\spring.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\tessint.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\TipSystem.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ToolClips.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\TprofilerTool.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\UndoBody.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\UnwrapBase.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\UnwrapInternal.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\viewfile.lib
+C:\maxsdk2025\Program Files\Autodesk\3ds Max 2025 SDK\maxsdk\lib\x64\Release\ViewSystem.lib
