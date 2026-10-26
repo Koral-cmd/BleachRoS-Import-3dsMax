@@ -560,7 +560,17 @@ struct AnimState {
     unsigned long foundFor = 0;
     std::vector<std::string> found;
     std::map<std::string, std::string> foundNote;   // путь -> "подходит 12 из 40"
+    std::vector<std::string> objectFiles;           // одиночные клипы объекта (.tmo2), играют вместе
 };
+
+// Пункт "все клипы объекта вместе" в списке пакетов (не файл).
+const char* const kObjectPack = "*object-all*";
+
+bool IsSingleClipFile(const std::string& p) {
+    const std::string l = Lower(p);
+    auto ends = [&](const char* e) { const size_t n = std::char_traits<char>::length(e); return l.size() >= n && l.compare(l.size() - n, n, e) == 0; };
+    return ends(".tmo2") || ends(".tmo");
+}
 
 HWND g_animDlg = nullptr;
 std::unique_ptr<AnimState> g_anim;
@@ -698,11 +708,17 @@ void FillClips(HWND dlg, AnimState& s) {
     SetText(dlg, IDC_A_COUNT, t);
 }
 
+std::string CurrentRigChar(HWND dlg, const AnimState& s);
+
 void OpenPack(HWND dlg, AnimState& s, const std::string& path) {
     WaitCursor wc;
     std::unique_ptr<tam::TactPkg> p(new tam::TactPkg());
     std::string err;
-    if (!tam::LoadTact(path, *p, err)) {
+    const bool object = path == kObjectPack;
+    const bool ok = object ? tam::LoadTactMany(s.objectFiles, CurrentRigChar(dlg, s), *p, err) : tam::LoadTact(path, *p, err);
+    Check(dlg, IDC_A_TOGETHER, object);
+    if (object && !err.empty()) Log("Клипы объекта: %s", err.c_str());
+    if (!ok) {
         s.pkg.reset();
         s.pkgPath.clear();
         SetText(dlg, IDC_A_STATUS, "Не открылся: " + err);
@@ -715,11 +731,14 @@ void OpenPack(HWND dlg, AnimState& s, const std::string& path) {
     for (const tam::SubEntry& e : p->extras) Log("  %s: %s/%s (%zu байт)", e.type.c_str(), e.where.c_str(), e.name.c_str(), e.size);
     s.pkg = std::move(p);
     s.pkgPath = path;
-    s.st.Set("last_pack", path);
-    s.st.Save();
+    if (!object) {
+        s.st.Set("last_pack", path);
+        s.st.Save();
+    }
     ComputeMatches(s);
     FillClips(dlg, s);
     std::string msg = "Клипов: " + std::to_string(s.pkg->clips.size());
+    if (object) msg += " из " + std::to_string(s.objectFiles.size()) + " файлов - \"Все из пакета\" загрузит их одновременно, одной последовательностью";
     if (s.pkg->clips.empty() && !s.pkg->extras.empty())
         msg += ". Здесь только эффекты/материалы (" + std::to_string(s.pkg->extras.size()) + ", см. лог) - их пока не читаю";
     SetText(dlg, IDC_A_STATUS, msg);
@@ -742,12 +761,23 @@ void FillPacks(HWND dlg, AnimState& s, const std::string& prefer) {
     if (s.foundFor != 0 && s.foundFor == CurrentRig(dlg, s))
         for (const std::string& f : s.found)
             if (std::find(s.packs.begin(), s.packs.end(), f) == s.packs.end()) s.packs.push_back(f);
+    // объект из нескольких одиночных клипов (garganta_line.tmo2, garganta_outer.tmo2...) - пункт "все вместе"
+    s.objectFiles.clear();
+    for (const std::string& p : s.packs)
+        if (IsSingleClipFile(p)) s.objectFiles.push_back(p);
+    if (s.objectFiles.size() >= 2) s.packs.insert(s.packs.begin(), kObjectPack);
+    else s.objectFiles.clear();
     const std::string last = s.st.Get("last_pack");
-    if (!prefer.empty() && std::find(s.packs.begin(), s.packs.end(), prefer) == s.packs.end()) s.packs.insert(s.packs.begin(), prefer);
-    if (!last.empty() && std::find(s.packs.begin(), s.packs.end(), last) == s.packs.end()) s.packs.push_back(last);
+    if (!prefer.empty() && prefer != kObjectPack && std::find(s.packs.begin(), s.packs.end(), prefer) == s.packs.end())
+        s.packs.insert(s.packs.begin() + (s.objectFiles.empty() ? 0 : 1), prefer);
+    if (!last.empty() && last != kObjectPack && std::find(s.packs.begin(), s.packs.end(), last) == s.packs.end()) s.packs.push_back(last);
     std::vector<std::string> names;
     int sel = s.packs.empty() ? -1 : 0;
     for (size_t i = 0; i < s.packs.size(); ++i) {
+        if (s.packs[i] == kObjectPack) {
+            names.push_back(CurrentRigChar(dlg, s) + ": все клипы объекта вместе (" + std::to_string(s.objectFiles.size()) + " файлов)");
+            continue;
+        }
         const auto fn = s.foundNote.find(s.packs[i]);
         names.push_back(tam::FileStem(s.packs[i]) + (fn != s.foundNote.end() ? "   [" + fn->second + "]" : std::string()) + "   " + s.packs[i]);
         if (!prefer.empty() && s.packs[i] == prefer) sel = static_cast<int>(i);
@@ -782,6 +812,7 @@ AnimOptions ReadAnimOptions(HWND dlg, Settings& st) {
     o.fps = (fi == 1) ? 30 : (fi == 2) ? 60 : 0;
     o.gap = std::max(1, std::atoi(GetText(dlg, IDC_A_GAP).c_str()));
     o.replace = Checked(dlg, IDC_A_APPEND);
+    o.together = Checked(dlg, IDC_A_TOGETHER);
     st.SetInt("anim_mode", o.mode);
     st.SetInt("anim_order", oi);
     st.SetInt("anim_fps", fi);
@@ -821,8 +852,9 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
         SetText(dlg, IDC_A_STATUS, "Выбери клип(ы)");
         return;
     }
-    const AnimOptions o = ReadAnimOptions(dlg, s.st);
+    AnimOptions o = ReadAnimOptions(dlg, s.st);
     s.st.Save();
+    if (o.together && s.pkgPath == kObjectPack && clips.size() == s.pkg->clips.size()) o.mergedName = CurrentRigChar(dlg, s);
     std::string report;
     bool ok = false;
     {
@@ -850,7 +882,38 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
     if (s.foundFor == rig)
         for (const std::string& f : s.found)
             if (std::find(packs.begin(), packs.end(), f) == packs.end()) packs.push_back(f);
-    if (packs.empty() && !s.pkgPath.empty()) packs.push_back(s.pkgPath);
+    if (packs.empty() && !s.pkgPath.empty() && s.pkgPath != kObjectPack) packs.push_back(s.pkgPath);
+    // объект: только одиночные клипы (.tmo2) - это части одной анимации, грузим одновременно
+    {
+        std::vector<std::string> singles;
+        for (const std::string& p : packs)
+            if (IsSingleClipFile(p)) singles.push_back(p);
+        if (singles.size() >= 2 && singles.size() == packs.size()) {
+            tam::TactPkg pk;
+            std::string e;
+            if (!tam::LoadTactMany(singles, charId, pk, e)) { SetText(dlg, IDC_A_STATUS, "Клипы объекта не читаются: " + e); return; }
+            if (MessageBoxW(dlg, Wide("Загрузить анимацию объекта " + charId + ": " + std::to_string(pk.clips.size()) +
+                                      " клипа(ов) из " + std::to_string(singles.size()) + " файлов одновременно, одной последовательностью?").c_str(),
+                            L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
+                return;
+            AnimOptions o = ReadAnimOptions(dlg, s.st);
+            s.st.Save();
+            o.together = true;
+            o.mergedName = charId;
+            std::vector<size_t> idx;
+            for (size_t i = 0; i < pk.clips.size(); ++i) idx.push_back(i);
+            std::string rep;
+            bool ok = false;
+            {
+                WaitCursor wc;
+                ok = s.bridge.applyClips(rig, pk, idx, o, rep);
+            }
+            SetText(dlg, IDC_A_STATUS, rep);
+            FillSequences(dlg, s);
+            if (!ok) MessageBoxW(dlg, Wide(rep).c_str(), L"BLEACH RoS - анимации", MB_ICONWARNING);
+            return;
+        }
+    }
     if (packs.empty()) {
         SetText(dlg, IDC_A_STATUS, "Пакеты анимаций " + charId + " не найдены (Motion\\" + charId + "*.tactpkg) - попробуй \"Искать по костям\"");
         return;
@@ -980,7 +1043,9 @@ void FindByBones(HWND dlg, AnimState& s) {
     }
     size_t fx = 0;
     for (const AnimSource& a : res.found) fx += a.extras.size();
-    FillPacks(dlg, s, s.found.empty() ? s.pkgPath : s.found.front());
+    std::string prefer = s.found.empty() ? s.pkgPath : s.found.front();
+    if (!s.found.empty() && IsSingleClipFile(prefer)) prefer = kObjectPack;   // части объекта - сразу "все вместе"
+    FillPacks(dlg, s, prefer);
     char t[400];
     std::snprintf(t, sizeof t, "Найдено пакетов с подходящими клипами: %zu%s. Подробно - в логе", s.found.size(),
                   res.cancelled ? " (поиск остановлен)" : "");
@@ -1012,7 +1077,8 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         SetText(dlg, IDC_A_ORDER_LBL, "Эйлер");
         SetText(dlg, IDC_A_FPS_LBL, "FPS");
         SetText(dlg, IDC_A_GAP_LBL, "Пауза");
-        SetText(dlg, IDC_A_APPEND, "Сначала удалить загруженные (иначе новые - после них)");
+        SetText(dlg, IDC_A_APPEND, "Сначала удалить загруженные");
+        SetText(dlg, IDC_A_TOGETHER, "Одновременно (1 клип)");
         SetText(dlg, IDC_A_LOAD, "Добавить выбранные");
         SetText(dlg, IDC_A_LOADALL, "Все из пакета (фильтр)");
         SetText(dlg, IDC_A_LOADCHAR, "ВСЕ анимации персонажа");

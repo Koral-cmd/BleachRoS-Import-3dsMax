@@ -175,6 +175,9 @@ struct TactPkg {
     std::vector<std::string> other;
     std::vector<SubEntry> extras;
     void Read();                      // из `data`
+    // Добавить ещё один файл (уже распакованный) в этот же пакет: его клипы
+    // встают в конец списка. Для "всех клипов объекта" из нескольких .tmo2.
+    void AddFile(const std::string& fileName, std::vector<uint8_t>&& bytes);
     bool Clip(size_t i, Tmo& out, std::string& err) const;
     bool ClipBones(size_t i, std::vector<uint32_t>& hashes) const;   // только хеши костей (быстро)
 };
@@ -184,6 +187,8 @@ bool LoadTmd2(const std::string& path, Tmd2& out, std::string& err);
 bool LoadLds(const std::string& path, Lds& out, std::string& err);
 bool LoadTact(const std::string& path, TactPkg& out, std::string& err);
 bool LoadTmo(const std::string& path, Tmo& out, std::string& err);
+// Несколько файлов как один пакет (name - имя пакета). Нечитаемые пропускаются (err - что именно).
+bool LoadTactMany(const std::vector<std::string>& paths, const std::string& name, TactPkg& out, std::string& err);
 
 // Быстро: вершины / треугольники / модели .tmd2 по заголовку (читает начало файла).
 struct Tmd2Quick {

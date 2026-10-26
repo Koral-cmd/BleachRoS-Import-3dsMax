@@ -737,6 +737,16 @@ void TactPkg::Read() {
         throw TamError(container == "поиск по сигнатуре" ? "не пакет анимаций (клипов tmo не найдено)" : "клипов нет");
 }
 
+void TactPkg::AddFile(const std::string& fileName, std::vector<uint8_t>&& bytes) {
+    blobs.push_back(std::move(bytes));
+    const int b = static_cast<int>(blobs.size()) - 1;
+    Walker w{ *this };
+    const size_t before = clips.size();
+    w.Walk(b, 0, blobs.back().size(), std::string(), fileName, 0);
+    // одиночный клип в файле получает имя файла
+    if (clips.size() == before + 1) clips.back().name = fileName;
+}
+
 bool TactPkg::Clip(size_t i, Tmo& out, std::string& err) const {
     if (i >= clips.size()) { err = "номер клипа вне списка"; return false; }
     try {
@@ -893,6 +903,27 @@ bool LoadTact(const std::string& path, TactPkg& out, std::string& err) {
         err = out.name + ": " + e.what();
         return false;
     }
+}
+
+bool LoadTactMany(const std::vector<std::string>& paths, const std::string& name, TactPkg& out, std::string& err) {
+    out = TactPkg();
+    out.name = name;
+    out.container = "несколько файлов";
+    for (const std::string& p : paths) {
+        std::vector<uint8_t> d;
+        std::string e;
+        if (!ReadAll(p, d, e)) { err += (err.empty() ? "" : "; ") + e; continue; }
+        try {
+            out.AddFile(FileStem(p), std::move(d));
+        } catch (const std::exception& x) {
+            err += (err.empty() ? "" : "; ") + FileStem(p) + ": " + x.what();
+        }
+    }
+    if (out.clips.empty()) {
+        if (err.empty()) err = "клипов нет";
+        return false;
+    }
+    return true;
 }
 
 bool LoadTmo(const std::string& path, Tmo& out, std::string& err) {

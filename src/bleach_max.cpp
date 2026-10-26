@@ -1040,9 +1040,25 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     struct Ready { std::string name; std::vector<std::vector<tam::M4>> poses; std::vector<char> anim; bool scale = false; };
     std::vector<Ready> ready;
     std::vector<std::string> rejected;
+    std::vector<tam::Tmo> clips;
     for (size_t ci : clipIdx) {
         tam::Tmo clip;
         if (!pkg.Clip(ci, clip, err)) { Log("  [!] %s", err.c_str()); rejected.push_back(pkg.clips[ci].name + " (не читается)"); continue; }
+        clips.push_back(std::move(clip));
+    }
+    if (o.together && clips.size() > 1) {
+        // части одного объекта: один клип, одна последовательность
+        std::vector<std::string> names;
+        for (const tam::Tmo& c : clips) names.push_back(c.name);
+        const std::string nm = o.mergedName.empty() ? tam::CommonClipName(names) : o.mergedName;
+        std::string list;
+        for (const std::string& n : names) list += (list.empty() ? "" : ", ") + n;
+        Log("ВМЕСТЕ -> %s: %s", nm.c_str(), list.c_str());
+        tam::Tmo merged = tam::MergeClips(clips, nm);
+        clips.clear();
+        clips.push_back(std::move(merged));
+    }
+    for (const tam::Tmo& clip : clips) {
         const tam::ClipMatch m = tam::MatchClip(clip, rig.skel, as);
         Log("АНИМ %s", tam::DescribeMatch(clip, m).c_str());
         for (const std::string& w : clip.warnings) Log("    [!] %s", w.c_str());

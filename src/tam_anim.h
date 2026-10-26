@@ -48,6 +48,12 @@ inline bool ClipFits(size_t matched, size_t clipBones, size_t skelBones) {
     return matched > 0 && (matched * 3 >= clipBones || matched * 3 >= skelBones);
 }
 
+// Несколько клипов в один (части одного объекта, которые играют вместе):
+// объединение костей, у общей кости берутся кривые первого клипа с ключами.
+Tmo MergeClips(const std::vector<Tmo>& clips, const std::string& name);
+// Общее имя: "garganta_line" + "garganta_outer" -> "garganta".
+std::string CommonClipName(const std::vector<std::string>& names);
+
 double SampleCurve(const std::vector<Key>& k, double f, double def);
 
 std::string DescribeMatch(const Tmo& clip, const ClipMatch& m);

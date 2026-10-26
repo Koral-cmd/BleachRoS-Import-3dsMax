@@ -73,3 +73,4 @@
 #define IDC_A_LOADCHAR   1135
 #define IDC_A_FIND       1136
 #define IDC_A_FITONLY    1137
+#define IDC_A_TOGETHER   1138

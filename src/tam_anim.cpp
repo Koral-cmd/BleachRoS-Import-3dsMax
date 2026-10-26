@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <unordered_map>
 
 namespace tam {
 
@@ -120,6 +121,63 @@ std::string DescribeMatch(const Tmo& clip, const ClipMatch& m) {
                   m.resolved == AnimMode::Absolute ? "absolute" : "delta", m.votesAbs, m.votesDelta,
                   m.degrees ? ", поворот в градусах" : "");
     return b;
+}
+
+namespace {
+bool HasKeys(const Tmo& c, size_t b) {
+    for (int k = 0; k < 9; ++k) {
+        const size_t ci = b * 9 + static_cast<size_t>(k);
+        if (ci < c.curves.size() && !c.curves[ci].empty()) return true;
+    }
+    return false;
+}
+} // namespace
+
+Tmo MergeClips(const std::vector<Tmo>& clips, const std::string& name) {
+    Tmo r;
+    r.name = name;
+    r.magic = clips.empty() ? std::string("tmo1") : clips.front().magic;
+    r.frames = 0;
+    r.length = 1;
+    std::unordered_map<uint32_t, size_t> at;
+    for (const Tmo& c : clips) {
+        r.frames = std::max(r.frames, c.frames);
+        r.length = std::max(r.length, c.length);
+        for (size_t b = 0; b < c.hashes.size(); ++b) {
+            const uint32_t h = c.hashes[b];
+            const auto it = at.find(h);
+            if (it != at.end()) {
+                // кость уже есть: заменить, только если там не было ключей
+                if (!HasKeys(r, it->second) && HasKeys(c, b))
+                    for (int k = 0; k < 9; ++k) {
+                        const size_t ci = b * 9 + static_cast<size_t>(k);
+                        r.curves[it->second * 9 + static_cast<size_t>(k)] = ci < c.curves.size() ? c.curves[ci] : std::vector<Key>();
+                    }
+                continue;
+            }
+            at[h] = r.hashes.size();
+            r.hashes.push_back(h);
+            for (int k = 0; k < 9; ++k) {
+                const size_t ci = b * 9 + static_cast<size_t>(k);
+                r.curves.push_back(ci < c.curves.size() ? c.curves[ci] : std::vector<Key>());
+            }
+        }
+        for (const std::string& w : c.warnings) r.warnings.push_back(c.name + ": " + w);
+    }
+    return r;
+}
+
+std::string CommonClipName(const std::vector<std::string>& names) {
+    if (names.empty()) return "clip";
+    std::string p = names.front();
+    for (const std::string& n : names) {
+        size_t k = 0;
+        while (k < p.size() && k < n.size() && p[k] == n[k]) ++k;
+        p.resize(k);
+    }
+    while (!p.empty() && (p.back() == '_' || p.back() == '-' || p.back() == ' ' || p.back() == '.')) p.pop_back();
+    if (p.size() < 3) p = names.front() + " +" + std::to_string(names.size() - 1);
+    return p;
 }
 
 } // namespace tam

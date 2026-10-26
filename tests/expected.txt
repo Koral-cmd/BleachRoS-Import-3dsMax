@@ -158,10 +158,9 @@ unknown#1: кадров 11, костей в клипе 3, найдено 2, не
   F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
   F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
 FIND bones=3 files=13 checked=12 opened=4
-  found garganta [CATS] clips=2 fit=2 best=2/2
-  found pl997 [actmng_pkg] clips=2 fit=2 best=2/3
-  found pl999 [actmng_pkg] clips=2 fit=2 best=2/3
-  found single [tmo] clips=1 fit=1 best=2/3
+  found pl999 [actmng_pkg] clips=2 fit=1 best=2/3
+  found garganta [CATS] clips=2 fit=1 best=2/2
+  found pl997 [actmng_pkg] clips=2 fit=1 best=2/3
   related pl999 [actmng_pkg]
   related pl999_cos00_00 [?]
   related pl999_cos00_00 [tmd0]
@@ -177,5 +176,5 @@ FIND bones=3 files=13 checked=12 opened=4
   magic tmd0 6
   magic tmo1 1
 FIND bones=3 files=14 checked=13 opened=5
-  found pl999_fx [поиск по сигнатуре] clips=2 fit=2 best=2/2
+  found pl999_fx [поиск по сигнатуре] clips=2 fit=1 best=2/2
   related pl999_fx [XFX1]

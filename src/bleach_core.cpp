@@ -371,7 +371,7 @@ bool ScanGame(const std::string& root, GameIndex& out, std::string& err) {
             a.size = it->file_size(ec);
             out.files.push_back(a);
         }
-        if (ext == ".tactpkg") {
+        if (ext == ".tactpkg" || ext == ".tmo" || ext == ".tmo2") {   // .tmo2 - анимации объектов (adv_object)
             out.motions.push_back(p.u8string());
             continue;
         }
@@ -464,6 +464,7 @@ void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, 
         ++out.opened;
         AnimSource src;
         src.path = f.path;
+        src.related = related;
         src.container = pk.container;
         src.clips = pk.clips.size();
         for (size_t i = 0; i < pk.clips.size(); ++i) {
@@ -471,7 +472,9 @@ void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, 
             size_t m = 0;
             for (uint32_t x : h)
                 if (rig.count(x)) ++m;
-            if (tam::ClipFits(m, h.size(), rig.size())) ++src.fit;
+            // для поиска строже: клипы из 2-3 общих корневых костей (камера, root) не в счёт
+            const bool strong = m >= 8 || m == rig.size() || (m == h.size() && m * 2 >= rig.size());
+            if (tam::ClipFits(m, h.size(), rig.size()) && strong) ++src.fit;
             if (m > src.bestMatched) { src.bestMatched = m; src.bestBones = h.size(); }
         }
         if (!id.empty())
@@ -480,9 +483,15 @@ void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, 
                     src.extras.push_back(e.type + " " + e.where + "/" + e.name + " (" + std::to_string(e.size) + " байт)");
         if (src.fit > 0 || !src.extras.empty()) out.found.push_back(src);
     }
+    // выше: файлы с именем объекта, потом по полноте совпадения лучшего клипа
     std::stable_sort(out.found.begin(), out.found.end(), [](const AnimSource& a, const AnimSource& b) {
-        if (a.fit != b.fit) return a.fit > b.fit;
-        return a.extras.size() > b.extras.size();
+        if ((a.fit > 0) != (b.fit > 0)) return a.fit > 0;
+        if (a.related != b.related) return a.related;
+        const double ra = a.bestBones ? static_cast<double>(a.bestMatched) / static_cast<double>(a.bestBones) : 0.0;
+        const double rb = b.bestBones ? static_cast<double>(b.bestMatched) / static_cast<double>(b.bestBones) : 0.0;
+        if (a.bestMatched != b.bestMatched) return a.bestMatched > b.bestMatched;
+        if (ra != rb) return ra > rb;
+        return a.fit > b.fit;
     });
 }
 

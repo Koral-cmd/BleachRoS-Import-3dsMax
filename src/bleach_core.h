@@ -72,7 +72,7 @@ struct AnyFile {
 struct GameIndex {
     std::string root;                       // папка игры
     std::map<std::string, Character> chars; // id -> файлы моделей
-    std::vector<std::string> motions;       // все .tactpkg
+    std::vector<std::string> motions;       // все .tactpkg / .tmo / .tmo2
     std::vector<AnyFile> files;             // все файлы (для поиска анимаций и эффектов)
     size_t scanned = 0;
 };
@@ -84,6 +84,7 @@ struct AnimSource {
     size_t clips = 0, fit = 0;              // клипов всего / подходят к скелету
     size_t bestMatched = 0, bestBones = 0;  // лучший клип: совпало костей / костей в клипе
     std::vector<std::string> extras;        // acttmv/actmtl с именем объекта
+    bool related = false;                   // имя файла содержит id объекта
 };
 
 struct AnimSearch {
