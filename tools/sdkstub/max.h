@@ -197,11 +197,30 @@ inline double GetSystemUnitScale(int) { return 0.0254; }
 
 // ---- Parameterbloecke ---------------------------------------
 class Texmap;
+typedef short ParamID;
+enum ParamType2 { TYPE_PT2_STUB = 0 };
+struct ParamDef {
+    ParamID ID = 0;
+    const MCHAR* int_name = nullptr;
+    ParamType2 type = TYPE_PT2_STUB;
+};
 class IParamBlock2 {
 public:
     virtual ~IParamBlock2() {}
     int SetValue(int, int, float) { return 1; }
     int SetValue(int, int, Texmap*, int = 0) { return 1; }
+    // pb2: tab-Parameter
+    int NumParams() { return 0; }
+    ParamID IndextoID(int i) { return static_cast<ParamID>(i); }
+    ParamDef& GetParamDef(ParamID) { static ParamDef d; return d; }
+    int Count(ParamID) { return 0; }
+    int SetCount(ParamID, int) { return 0; }
+    BOOL SetValue(ParamID, int, int, int) { return TRUE; }
+    BOOL SetValue(ParamID, int, float, int) { return TRUE; }
+    BOOL SetValue(ParamID, int, const MCHAR*, int) { return TRUE; }
+    const MCHAR* GetStr(ParamID, int = 0, int = 0) { return L""; }
+    int GetInt(ParamID, int = 0, int = 0) { return 0; }
+    float GetFloat(ParamID, int = 0, int = 0) { return 0.0f; }
 };
 
 template <class T> class Tab {
@@ -225,6 +244,7 @@ public:
     virtual void* GetInterface(ULONG) { return nullptr; }
     virtual IParamBlock2* GetParamBlockByID(int) { return nullptr; }
     virtual IParamBlock2* GetParamBlock(int) { return nullptr; }
+    virtual int NumParamBlocks() { return 0; }
 };
 
 // ---- Szene --------------------------------------------------
@@ -260,6 +280,7 @@ public:
     ULONG GetHandle() { return 0; }
     // Animatable (Notizspuren)
     int NumNoteTracks() { return 0; }
+    class ICustAttribContainer* GetCustAttribContainer() { return nullptr; }
     class NoteTrack* GetNoteTrack(int) { return nullptr; }
     void DeleteNoteTrack(class NoteTrack*, BOOL = TRUE) {}
     void AddNoteTrack(class NoteTrack*) {}

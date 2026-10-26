@@ -23,6 +23,8 @@
 #include "tam_assemble.h"
 #include "tam_formats.h"
 
+#include <ICustAttribContainer.h>
+#include <custattrib.h>
 #include <iskin.h>
 #include <notetrck.h>
 #include <maxscript/maxscript.h>
@@ -886,164 +888,148 @@ std::wstring ScriptPath(const std::wstring& p) {
     return L"\"" + r + L"\"";
 }
 
-// Блок последовательностей на rootNode (WhiteoutDex или наследие NeoDex) -> список.
-// false: блока нет или он пустой (тогда правда - наша запись).
-// Блок последовательностей на rootNode: первый CA с параметром seqNames
-// (WhiteoutDexSequenceData раньше NeoDexSequenceData). Читается сам блок, а не
-// rootNode.seqNames - при двух блоках такое имя неоднозначно и падает.
-const wchar_t* kFindSeqCA =
-    L" fn bleachSeqCAs = (\n"
-    L"  local r = #(), legacy = #()\n"
-    L"  for i = 1 to (custAttributes.count rootNode) do (\n"
-    L"   local ca = custAttributes.get rootNode i\n"
-    L"   if (try (isProperty ca #seqNames) catch (false)) do (\n"
-    L"    if (try (ca.name == \"WhiteoutDexSequenceData\") catch (false)) then append r ca else append legacy ca)\n"
-    L"  )\n"
-    L"  join r legacy\n"
-    L"  r\n"
-    L" )\n";
+// ------------------------------------------------------------
+//  Блок последовательностей WhiteoutDex на rootNode - напрямую через SDK
+//  (custom attribute -> IParamBlock2 -> массивы seqNames/startFrames/...).
+//  Без MAXScript: при двух блоках (WhiteoutDex + старый NeoDex) обращение
+//  rootNode.seqNames неоднозначно, а скрипт записи у пользователя не выполнялся.
+// ------------------------------------------------------------
+struct SeqBlock {
+    CustAttrib* ca = nullptr;
+    IParamBlock2* pb = nullptr;
+    ParamID names = -1, starts = -1, ends = -1, loops = -1, rarity = -1, speed = -1, ext = -1, group = -1;
+    bool wdx = false;
+};
+
+std::string LowerW(const MCHAR* s) { return s ? Lower(FromMax(s)) : std::string(); }
+
+std::vector<SeqBlock> FindSeqBlocks() {
+    std::vector<SeqBlock> r;
+    Interface* ip = GetCOREInterface();
+    INode* root = ip ? ip->GetRootNode() : nullptr;
+    ICustAttribContainer* cc = root ? root->GetCustAttribContainer() : nullptr;
+    if (cc == nullptr) return r;
+    for (int i = 0; i < cc->GetNumCustAttribs(); ++i) {
+        CustAttrib* ca = cc->GetCustAttrib(i);
+        if (ca == nullptr) continue;
+        for (int bi = 0; bi < ca->NumParamBlocks(); ++bi) {
+            IParamBlock2* pb = ca->GetParamBlock(bi);
+            if (pb == nullptr) continue;
+            SeqBlock sb;
+            sb.ca = ca;
+            sb.pb = pb;
+            for (int j = 0; j < pb->NumParams(); ++j) {
+                const ParamID id = pb->IndextoID(j);
+                const std::string n = LowerW(pb->GetParamDef(id).int_name);
+                if (n == "seqnames") sb.names = id;
+                else if (n == "startframes") sb.starts = id;
+                else if (n == "endframes") sb.ends = id;
+                else if (n == "nonlooping") sb.loops = id;
+                else if (n == "rarity") sb.rarity = id;
+                else if (n == "movespeed") sb.speed = id;
+                else if (n == "seqextents") sb.ext = id;
+                else if (n == "sharedgroup") sb.group = id;
+            }
+            if (sb.names < 0 || sb.starts < 0 || sb.ends < 0) continue;
+            sb.wdx = LowerW(ca->GetName()) == "whiteoutdexsequencedata";
+            r.push_back(sb);
+        }
+    }
+    std::stable_sort(r.begin(), r.end(), [](const SeqBlock& a, const SeqBlock& b) { return a.wdx && !b.wdx; });
+    return r;
+}
+
+// Скрипт с перехватом ошибки (в т.ч. синтаксической): текст -> файл, fileIn в try.
+bool RunScriptChecked(const std::wstring& script, const char* tag) {
+    const std::wstring dir = DataDir();
+    const std::wstring ms = dir + L"\\last_" + Wide(tag) + L".ms", err = dir + L"\\last_" + Wide(tag) + L".err";
+    std::string u = "\xEF\xBB\xBF" + Utf8(script);
+    if (!WriteFileW(ms, std::vector<uint8_t>(u.begin(), u.end()))) return RunScript(script);
+    DeleteFileW2(err);
+    const std::wstring w = L"(\n try (fileIn " + ScriptPath(ms) + L") catch (\n  local f = createFile " + ScriptPath(err) +
+                           L"\n  format \"%\" (getCurrentException()) to:f\n  close f\n )\n OK\n)\n";
+    const bool ran = RunScript(w);
+    const std::string e = ReadTextFile(err);
+    DeleteFileW2(err);
+    if (!e.empty()) Log(TR("  [!] скрипт %s: %s"), tag, e.c_str());
+    return ran && e.empty();
+}
 
 bool PullSceneSequences(std::vector<Loaded>& out) {
-    const std::wstring file = DataDir() + L"\\seq_pull.txt";
-    DeleteFileW2(file);
-    std::wstring s = std::wstring(L"(\n") + kFindSeqCA +
-                     L" local cas = bleachSeqCAs()\n"
-                     L" local ca = (if cas.count > 0 then cas[1] else undefined)\n"
-                     L" local n = (if ca == undefined then -1 else (try (ca.seqNames.count) catch (-1)))\n"
-                     L" if n > 0 do (\n  local f = undefined\n"
-                     L"  try (f = createFile " + ScriptPath(file) + L" encoding:#utf8 writeBOM:false) catch (f = createFile " + ScriptPath(file) + L")\n"
-                     L"  for i = 1 to n do (\n"
-                     L"   local nl = (try (ca.nonLooping[i]) catch (false))\n"
-                     L"   format \"%\\t%\\t%\\t%\\n\" ca.seqNames[i] ca.startFrames[i] ca.endFrames[i] (if nl == true then 1 else 0) to:f\n"
-                     L"  )\n  close f\n )\n OK\n)\n";
-    if (!RunScript(s)) return false;
-    const std::string txt = ReadTextFile(file);
-    DeleteFileW2(file);
-    if (txt.empty()) return false;
+    const std::vector<SeqBlock> bl = FindSeqBlocks();
+    if (bl.empty()) return false;
+    const SeqBlock& b = bl.front();
+    const int n = b.pb->Count(b.names);
+    if (n <= 0) return false;
     out.clear();
-    size_t a = 0;
-    while (a < txt.size()) {
-        size_t e = txt.find('\n', a);
-        if (e == std::string::npos) e = txt.size();
-        std::string line = txt.substr(a, e - a);
-        a = e + 1;
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        std::vector<std::string> f;
-        size_t p = 0;
-        while (true) {
-            const size_t t = line.find('\t', p);
-            f.push_back(line.substr(p, t == std::string::npos ? std::string::npos : t - p));
-            if (t == std::string::npos) break;
-            p = t + 1;
-        }
-        if (f.size() < 4 || f[0].empty()) continue;
-        double s0 = 0, s1 = 0;
-        if (!ParseNum(f[1], s0) || !ParseNum(f[2], s1)) continue;
+    for (int i = 0; i < n; ++i) {
         Loaded l;
-        l.name = f[0];
-        l.start = static_cast<int>(s0);
-        l.end = static_cast<int>(s1);
-        l.nonLooping = (f[3] == "1");
-        out.push_back(l);
+        l.name = FromMax(b.pb->GetStr(b.names, 0, i));
+        l.start = (i < b.pb->Count(b.starts)) ? b.pb->GetInt(b.starts, 0, i) : 0;
+        l.end = (i < b.pb->Count(b.ends)) ? b.pb->GetInt(b.ends, 0, i) : 0;
+        l.nonLooping = (b.loops >= 0 && i < b.pb->Count(b.loops)) ? (b.pb->GetInt(b.loops, 0, i) != 0) : false;
+        if (!l.name.empty()) out.push_back(l);
     }
     SortLoaded(out);
     return true;
 }
 
-// Запись -> сцена (блок WhiteoutDex или note track на rootNode).
-// Каждый массив блока пишется отдельно; после записи число последовательностей
-// читается обратно. true = сцена содержит ровно эти клипы.
+// Запись -> сцена: во все блоки последовательностей на rootNode (Rarity/MoveSpeed/
+// Extents/группа сохраняются по кадру начала). Блока нет - создаётся (WhiteoutDex),
+// иначе - note track на rootNode. true = сцена содержит ровно эти клипы.
 bool PublishSequences(const std::vector<Loaded>& clips) {
     Interface* ip = GetCOREInterface();
-    const std::wstring file = DataDir() + L"\\seq_mode.txt";
-    DeleteFileW2(file);
-    std::wstring names, starts, ends, loops;
-    for (size_t i = 0; i < clips.size(); ++i) {
-        const wchar_t* sep = i ? L"," : L"";
-        names += sep + Q(clips[i].name);
-        starts += sep + std::to_wstring(clips[i].start);
-        ends += sep + std::to_wstring(clips[i].end);
-        loops += std::wstring(sep) + (clips[i].nonLooping ? L"true" : L"false");
+    std::vector<SeqBlock> bl = FindSeqBlocks();
+    if (bl.empty()) {
+        RunScriptChecked(L"(\n if ::WdxSequenceStorage != undefined then ::WdxSequenceStorage.ensureCA()\n"
+                         L" else if ::WdxSequenceCA != undefined do custAttributes.add rootNode ::WdxSequenceCA\n OK\n)\n",
+                         "seq_ensure");
+        bl = FindSeqBlocks();
     }
-    std::wstring s =
-        std::wstring(L"(\n local errs = \"\"\n") + kFindSeqCA +
-        L" local nN = #(" + names + L"), nS = #(" + starts + L"), nE = #(" + ends + L"), nL = #(" + loops + L")\n"
-        L" local wdx = (try (::WdxSequenceStorage != undefined) catch (false))\n"
-        L" local cas = bleachSeqCAs()\n"
-        L" if cas.count == 0 and wdx do (try (::WdxSequenceStorage.ensureCA()) catch (errs += \"ensureCA: \" + (getCurrentException()) + \"; \"); cas = bleachSeqCAs())\n"
-        L" if cas.count == 0 and (try (::WdxSequenceCA != undefined) catch (false)) do (try (custAttributes.add rootNode ::WdxSequenceCA) catch (errs += \"add WdxSequenceCA: \" + (getCurrentException()) + \"; \"); cas = bleachSeqCAs())\n"
-        L" local mode = \"notes\"\n"
-        L" local back = -1\n"
-        L" for ca in cas do (\n"
-        L"  local oS = #(), oR = #(), oM = #(), oX = #(), oG = #()\n"
-        L"  try (oS = for v in ca.startFrames collect v) catch ()\n"
-        L"  try (oR = for v in ca.rarity collect v) catch ()\n"
-        L"  try (oM = for v in ca.moveSpeed collect v) catch ()\n"
-        L"  try (oX = for v in ca.seqExtents collect v) catch ()\n"
-        L"  try (oG = for v in ca.sharedGroup collect v) catch ()\n"
-        L"  local nR = #(), nM = #(), nX = #(), nG = #()\n"
-        L"  for i = 1 to nS.count do (\n"
-        L"   local k = findItem oS nS[i]\n"
-        L"   append nR (if k > 0 and k <= oR.count then (oR[k] as float) else 0.0)\n"
-        L"   append nM (if k > 0 and k <= oM.count then (oM[k] as float) else 0.0)\n"
-        L"   append nX (if k > 0 and k <= oX.count then (oX[k] as string) else \"\")\n"
-        L"   append nG (if k > 0 and k <= oG.count then (oG[k] as string) else \"\")\n"
-        L"  )\n"
-        L"  try (ca.seqNames = nN) catch (errs += \"seqNames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.startFrames = nS) catch (errs += \"startFrames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.endFrames = nE) catch (errs += \"endFrames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.nonLooping = nL) catch (errs += \"nonLooping: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.rarity = nR) catch (errs += \"rarity: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.moveSpeed = nM) catch (errs += \"moveSpeed: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (ca.seqExtents = nX) catch ()\n"
-        L"  try (ca.sharedGroup = nG) catch ()\n"
-        L"  local c = (try (ca.seqNames.count) catch (-1))\n"
-        L"  if back == -1 or c < back do back = c\n"
-        L" )\n"
-        L" if cas.count > 0 and back == nN.count do (\n"
-        L"  try (while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)) catch ()\n"
-        L"  mode = (if wdx then \"wdx\" else \"ca\")\n"
-        L" )\n"
-        L" local diag = \"WdxSequenceStorage=\" + (wdx as string) + \" WdxSequenceCA=\" + ((try (::WdxSequenceCA != undefined) catch (false)) as string) + \" CA:\"\n"
-        L" for i = 1 to (custAttributes.count rootNode) do diag += \" \" + (try ((custAttributes.get rootNode i).name as string) catch (\"?\"))\n"
-        L" diag += \" seqCA=\" + (cas.count as string)\n"
-        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\\n%\\n%\\n%\\n\" mode back diag errs to:f\n close f\n OK\n)\n";
-    const bool ran = RunScript(s);
-    const std::string res = ReadTextFile(file);
-    DeleteFileW2(file);
-    std::vector<std::string> ln;
-    {
-        size_t p0 = 0;
-        while (p0 <= res.size() && ln.size() < 4) {
-            size_t e0 = res.find('\n', p0);
-            if (e0 == std::string::npos) e0 = res.size();
-            std::string x = res.substr(p0, e0 - p0);
-            while (!x.empty() && (x.back() == '\r' || x.back() == ' ')) x.pop_back();
-            ln.push_back(x);
-            p0 = e0 + 1;
+    const int n = static_cast<int>(clips.size());
+    bool ok = !bl.empty();
+    for (const SeqBlock& b : bl) {
+        IParamBlock2* pb = b.pb;
+        // старые значения по кадру начала
+        std::map<int, float> oR, oM;
+        std::map<int, std::string> oX, oG;
+        const int on = pb->Count(b.starts);
+        for (int i = 0; i < on; ++i) {
+            const int st = pb->GetInt(b.starts, 0, i);
+            if (b.rarity >= 0 && i < pb->Count(b.rarity)) oR[st] = pb->GetFloat(b.rarity, 0, i);
+            if (b.speed >= 0 && i < pb->Count(b.speed)) oM[st] = pb->GetFloat(b.speed, 0, i);
+            if (b.ext >= 0 && i < pb->Count(b.ext)) oX[st] = FromMax(pb->GetStr(b.ext, 0, i));
+            if (b.group >= 0 && i < pb->Count(b.group)) oG[st] = FromMax(pb->GetStr(b.group, 0, i));
         }
-        while (ln.size() < 4) ln.push_back(std::string());
-    }
-    std::string mode = ln[0], back = ln[1], errs = ln[3];
-    if (!ln[2].empty()) Log("  %s", ln[2].c_str());
-    if (!ran || mode.empty()) {
-        if (!ran) Log("%s", TR("  [!] скрипт записи последовательностей не выполнился"));
-        mode = "notes";
-    }
-    if (!errs.empty()) Log(TR("  [!] запись последовательностей: %s"), errs.c_str());
-    bool ok = true;
-    if (mode.compare(0, 5, "notes") == 0) {
-        // блока нет (или он не принял запись) - note track на rootNode
-        if (ip != nullptr) LoadedToNotes(ip->GetRootNode(), clips);
-        if (back.size() && back != "-1") {
-            Log(TR("  [!] блок seqNames на rootNode не принял запись (в нём %s, нужно %zu) - список ведёт плагин"), back.c_str(),
-                clips.size());
-            ok = false;
+        for (ParamID id : { b.names, b.starts, b.ends, b.loops, b.rarity, b.speed, b.ext, b.group })
+            if (id >= 0) pb->SetCount(id, n);
+        for (int i = 0; i < n; ++i) {
+            const Loaded& c = clips[static_cast<size_t>(i)];
+            const MSTR nm = M(c.name);
+            pb->SetValue(b.names, 0, nm.data(), i);
+            pb->SetValue(b.starts, 0, c.start, i);
+            pb->SetValue(b.ends, 0, c.end, i);
+            if (b.loops >= 0) pb->SetValue(b.loops, 0, c.nonLooping ? 1 : 0, i);
+            if (b.rarity >= 0) pb->SetValue(b.rarity, 0, oR.count(c.start) ? oR[c.start] : 0.0f, i);
+            if (b.speed >= 0) pb->SetValue(b.speed, 0, oM.count(c.start) ? oM[c.start] : 0.0f, i);
+            if (b.ext >= 0) pb->SetValue(b.ext, 0, M(oX.count(c.start) ? oX[c.start] : std::string()).data(), i);
+            if (b.group >= 0) pb->SetValue(b.group, 0, M(oG.count(c.start) ? oG[c.start] : std::string()).data(), i);
         }
+        if (pb->Count(b.names) != n) ok = false;
     }
-    Log(TR("  последовательностей %zu -> %s"), clips.size(),
-        mode.compare(0, 3, "wdx") == 0 ? "WhiteoutDex (Sequence Manager)" : mode.compare(0, 2, "ca") == 0 ? TR("блок seqNames на rootNode") : TR("note track на rootNode"));
-    return ok;
+    INode* root = ip ? ip->GetRootNode() : nullptr;
+    if (ok) {
+        // note track на rootNode больше не нужен (WhiteoutDex перенёс бы его ещё раз)
+        if (root != nullptr)
+            for (int i = root->NumNoteTracks() - 1; i >= 0; --i) root->DeleteNoteTrack(root->GetNoteTrack(i), TRUE);
+    } else if (root != nullptr) {
+        LoadedToNotes(root, clips);
+    }
+    std::string where;
+    for (const SeqBlock& b : bl) where += std::string(where.empty() ? "" : ", ") + FromMax(b.ca->GetName());
+    Log(TR("  последовательностей %zu -> %s"), clips.size(), ok ? where.c_str() : TR("note track на rootNode"));
+    if (!bl.empty() && !ok) Log("%s", TR("  [!] блок последовательностей не принял запись - список ведёт плагин"));
+    return ok || bl.empty();
 }
 
 // Текущие клипы скелета. Главный список - на helper'е скелета. Блок WhiteoutDex

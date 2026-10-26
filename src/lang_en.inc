@@ -288,3 +288,5 @@
 { "  [!] запись последовательностей: %s", "  [!] writing sequences: %s" },
 { "  [!] блок seqNames на rootNode не принял запись (в нём %s, нужно %zu) - список ведёт плагин", "  [!] the seqNames block on rootNode did not take the write (it has %s, needed %zu) - the plugin keeps the list" },
 { "  [!] скрипт записи последовательностей не выполнился", "  [!] the sequence write script did not run" },
+{ "  [!] скрипт %s: %s", "  [!] script %s: %s" },
+{ "  [!] блок последовательностей не принял запись - список ведёт плагин", "  [!] the sequence block did not take the write - the plugin keeps the list" },
