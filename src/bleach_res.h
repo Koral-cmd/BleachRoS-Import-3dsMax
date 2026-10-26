@@ -54,7 +54,7 @@
 #define IDC_A_FPS        1116
 #define IDC_A_GAP_LBL    1117
 #define IDC_A_GAP        1118
-#define IDC_A_NOTES      1119
+// 1119 (IDC_A_NOTES) больше не используется
 #define IDC_A_APPEND     1120
 #define IDC_A_LOAD       1121
 #define IDC_A_LOADALL    1122
@@ -62,3 +62,12 @@
 #define IDC_A_SEQ_LBL    1124
 #define IDC_A_SEQ        1125
 #define IDC_A_STATUS     1126
+#define IDC_A_PLAY       1127
+#define IDC_A_FULL       1128
+#define IDC_A_DELSEQ     1129
+#define IDC_A_NAME_LBL   1130
+#define IDC_A_NAME       1131
+#define IDC_A_NONLOOP    1132
+#define IDC_A_RENAME     1133
+#define IDC_A_SEQGROUP   1134
+#define IDC_A_LOADCHAR   1135

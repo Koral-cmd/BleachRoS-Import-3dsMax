@@ -36,8 +36,7 @@ struct AnimOptions {
     std::string order = "XYZ";
     int fps = 0;                 // 0 = не менять
     int gap = 10;                // кадров между клипами на таймлайне
-    bool notes = true;           // note track + NeoDexSequenceData
-    bool append = false;         // дописать после уже загруженных
+    bool replace = false;        // удалить уже загруженные клипы перед загрузкой
 };
 
 struct RigInfo {
@@ -46,9 +45,11 @@ struct RigInfo {
     std::string charId;          // pl000
 };
 
+// Загруженный клип = последовательность WhiteoutDex / Warcraft 3
 struct SequenceInfo {
     std::string name;
     int start = 0, end = 0;      // в кадрах
+    bool nonLooping = false;
 };
 
 struct UiBridge {
@@ -59,7 +60,9 @@ struct UiBridge {
     std::function<unsigned long()> selectedRig;
     std::function<bool(unsigned long, const tam::TactPkg&, const std::vector<size_t>&, const AnimOptions&, std::string&)> applyClips;
     std::function<bool(unsigned long, std::string&)> resetBind;
-    std::function<std::vector<SequenceInfo>()> sequences;
+    std::function<std::vector<SequenceInfo>(unsigned long)> sequences;
+    std::function<bool(unsigned long, size_t, std::string&)> deleteSequence;
+    std::function<bool(unsigned long, size_t, const std::string&, bool, std::string&)> renameSequence;
     std::function<void(int, int)> showRange;
     std::function<void(void*, bool)> registerDialog;   // модельное окно Max: RegisterDlgWnd
 };

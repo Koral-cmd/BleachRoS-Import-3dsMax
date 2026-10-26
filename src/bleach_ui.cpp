@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -506,18 +507,83 @@ std::unique_ptr<AnimState> g_anim;
 
 const char* const kOrders[] = { "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX" };
 
-void FillSequences(HWND dlg, AnimState& s) {
-    s.seqs = s.bridge.sequences ? s.bridge.sequences() : std::vector<SequenceInfo>();
+// Стандартные имена анимаций Warcraft 3 (подсказки в поле переименования)
+const char* const kWc3Names[] = {
+    "Stand", "Stand - 2", "Stand - 3", "Stand Ready", "Stand Victory", "Stand Hit", "Stand Channel",
+    "Walk", "Walk Fast", "Attack", "Attack - 2", "Attack Slam", "Spell", "Spell - 2", "Spell Channel",
+    "Spell Throw", "Spell Slam", "Death", "Decay", "Dissipate", "Birth", "Morph", "Portrait", "Portrait Talk",
+};
+
+bool Wc3NonLooping(const std::string& n) {
+    const std::string l = Lower(n);
+    if (l.compare(0, 13, "spell channel") == 0) return false;
+    for (const char* p : { "attack", "spell", "death", "decay", "birth", "dissipate", "morph", "stand hit" })
+        if (l.compare(0, std::char_traits<char>::length(p), p) == 0) return true;
+    return false;
+}
+
+unsigned long CurrentRig(HWND dlg, const AnimState& s) {
+    const int r = ComboSel(dlg, IDC_A_RIG);
+    return (r >= 0 && r < static_cast<int>(s.rigs.size())) ? s.rigs[static_cast<size_t>(r)].handle : 0;
+}
+
+int SelectedSeq(HWND dlg, const AnimState& s) {
+    const int i = static_cast<int>(SendDlgItemMessageW(dlg, IDC_A_SEQ, LB_GETCURSEL, 0, 0));
+    return (i >= 0 && i < static_cast<int>(s.seqs.size())) ? i : -1;
+}
+
+void FillSequences(HWND dlg, AnimState& s, int select = -1) {
+    const unsigned long rig = CurrentRig(dlg, s);
+    s.seqs = (s.bridge.sequences && rig != 0) ? s.bridge.sequences(rig) : std::vector<SequenceInfo>();
     HWND lb = GetDlgItem(dlg, IDC_A_SEQ);
     SendMessageW(lb, LB_RESETCONTENT, 0, 0);
     for (const SequenceInfo& q : s.seqs) {
         char t[300];
-        std::snprintf(t, sizeof t, "%s   [%d - %d]", q.name.c_str(), q.start, q.end);
+        std::snprintf(t, sizeof t, "%s   [%d - %d]%s", q.name.c_str(), q.start, q.end, q.nonLooping ? "   NonLooping" : "");
         SendMessageW(lb, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(t).c_str()));
     }
+    if (select >= 0 && select < static_cast<int>(s.seqs.size())) SendMessageW(lb, LB_SETCURSEL, static_cast<WPARAM>(select), 0);
     char t[200];
-    std::snprintf(t, sizeof t, "Последовательности на таймлайне: %zu (двойной щелчок - показать)", s.seqs.size());
+    std::snprintf(t, sizeof t, "Клипов: %zu. Это же - Sequences в WhiteoutDex (двойной щелчок - проиграть)", s.seqs.size());
     SetText(dlg, IDC_A_SEQ_LBL, t);
+}
+
+void SeqSelected(HWND dlg, AnimState& s) {
+    const int i = SelectedSeq(dlg, s);
+    if (i < 0) return;
+    SetDlgItemTextW(dlg, IDC_A_NAME, Wide(s.seqs[static_cast<size_t>(i)].name).c_str());
+    Check(dlg, IDC_A_NONLOOP, s.seqs[static_cast<size_t>(i)].nonLooping);
+}
+
+void PlaySeq(HWND dlg, AnimState& s) {
+    const int i = SelectedSeq(dlg, s);
+    if (i < 0) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    if (s.bridge.showRange) s.bridge.showRange(s.seqs[static_cast<size_t>(i)].start, s.seqs[static_cast<size_t>(i)].end);
+}
+
+void FullTimeline(HWND dlg, AnimState& s) {
+    int end = 1;
+    for (const SequenceInfo& q : s.seqs) end = std::max(end, q.end);
+    if (s.bridge.showRange) s.bridge.showRange(0, end);
+    SetText(dlg, IDC_A_STATUS, "Таймлайн 0-" + std::to_string(end));
+}
+
+void DeleteSeq(HWND dlg, AnimState& s) {
+    const int i = SelectedSeq(dlg, s);
+    if (i < 0 || !s.bridge.deleteSequence) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    std::string rep;
+    s.bridge.deleteSequence(CurrentRig(dlg, s), static_cast<size_t>(i), rep);
+    SetText(dlg, IDC_A_STATUS, rep);
+    FillSequences(dlg, s, std::min(i, static_cast<int>(s.seqs.size()) - 2));
+}
+
+void RenameSeq(HWND dlg, AnimState& s) {
+    const int i = SelectedSeq(dlg, s);
+    if (i < 0 || !s.bridge.renameSequence) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    std::string rep;
+    s.bridge.renameSequence(CurrentRig(dlg, s), static_cast<size_t>(i), GetText(dlg, IDC_A_NAME), Checked(dlg, IDC_A_NONLOOP), rep);
+    SetText(dlg, IDC_A_STATUS, rep);
+    FillSequences(dlg, s, i);
 }
 
 void FillClips(HWND dlg, AnimState& s) {
@@ -610,15 +676,13 @@ AnimOptions ReadAnimOptions(HWND dlg, Settings& st) {
     o.order = kOrders[oi < 6 ? oi : 0];
     const int fi = std::max(0, ComboSel(dlg, IDC_A_FPS));
     o.fps = (fi == 1) ? 30 : (fi == 2) ? 60 : 0;
-    o.gap = std::max(0, std::atoi(GetText(dlg, IDC_A_GAP).c_str()));
-    o.notes = Checked(dlg, IDC_A_NOTES);
-    o.append = Checked(dlg, IDC_A_APPEND);
+    o.gap = std::max(1, std::atoi(GetText(dlg, IDC_A_GAP).c_str()));
+    o.replace = Checked(dlg, IDC_A_APPEND);
     st.SetInt("anim_mode", o.mode);
     st.SetInt("anim_order", oi);
     st.SetInt("anim_fps", fi);
     st.SetInt("anim_gap", o.gap);
-    st.SetInt("anim_notes", o.notes);
-    st.SetInt("anim_append", o.append);
+    st.SetInt("anim_replace", o.replace);
     return o;
 }
 
@@ -632,6 +696,10 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
         SetText(dlg, IDC_A_STATUS, "Пакет анимаций не открыт");
         return;
     }
+    if (Checked(dlg, IDC_A_APPEND) && !s.seqs.empty() &&
+        MessageBoxW(dlg, Wide("Удалить уже загруженные клипы (" + std::to_string(s.seqs.size()) + ") перед загрузкой?").c_str(),
+                    L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
+        return;
     std::vector<size_t> clips;
     if (all) {
         clips = s.shown;
@@ -664,6 +732,84 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
     if (!ok) MessageBoxW(dlg, Wide(report).c_str(), L"BLEACH RoS - анимации", MB_ICONWARNING);
 }
 
+// Все клипы всех пакетов персонажа подряд. Неподходящие к скелету клипы
+// отбрасывает сам плагин; повторы по имени (тот же клип в двух пакетах или уже
+// загруженный) пропускаются.
+void LoadCharacterAll(HWND dlg, AnimState& s) {
+    const unsigned long rig = CurrentRig(dlg, s);
+    if (rig == 0) { SetText(dlg, IDC_A_STATUS, "Нет скелета в сцене"); return; }
+    if (!s.bridge.applyClips) return;
+    const std::string charId = CurrentRigChar(dlg, s);
+    std::vector<std::string> packs;
+    std::string err;
+    if (EnsureIndex(s.st, false, err)) packs = MotionsFor(g_index, charId);
+    if (packs.empty() && !s.pkgPath.empty()) packs.push_back(s.pkgPath);
+    if (packs.empty()) {
+        SetText(dlg, IDC_A_STATUS, "Пакеты анимаций персонажа " + charId + " не найдены (Motion\\" + charId + "*.tactpkg)");
+        return;
+    }
+    // список клипов заранее - чтобы показать, сколько будет
+    std::vector<std::unique_ptr<tam::TactPkg>> loaded;
+    size_t total = 0;
+    {
+        WaitCursor wc;
+        for (const std::string& p : packs) {
+            std::unique_ptr<tam::TactPkg> pk(new tam::TactPkg());
+            if (!tam::LoadTact(p, *pk, err)) { Log("Пакет %s не открылся: %s", p.c_str(), err.c_str()); continue; }
+            total += pk->clips.size();
+            loaded.push_back(std::move(pk));
+        }
+    }
+    if (total == 0) { SetText(dlg, IDC_A_STATUS, "В пакетах персонажа нет клипов"); return; }
+    const bool replace = Checked(dlg, IDC_A_APPEND);
+    std::string q = "Загрузить все анимации " + charId + ": пакетов " + std::to_string(loaded.size()) + ", клипов " +
+                    std::to_string(total) + "?\n\nНеподходящие к скелету клипы и повторы пропускаются.";
+    if (replace && !s.seqs.empty()) q += "\nУже загруженные клипы (" + std::to_string(s.seqs.size()) + ") будут удалены.";
+    else if (!s.seqs.empty()) q += "\nНовые клипы встанут после уже загруженных (" + std::to_string(s.seqs.size()) + ").";
+    if (MessageBoxW(dlg, Wide(q).c_str(), L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
+
+    AnimOptions o = ReadAnimOptions(dlg, s.st);
+    s.st.Save();
+    std::set<std::string> names;
+    if (!replace)
+        for (const SequenceInfo& si : s.seqs) names.insert(Lower(si.name));
+    size_t added = 0, skippedDup = 0, failedPacks = 0;
+    std::string lastReport;
+    {
+        WaitCursor wc;
+        bool first = true;
+        for (size_t pi = 0; pi < loaded.size(); ++pi) {
+            const tam::TactPkg& pk = *loaded[pi];
+            std::vector<size_t> idx;
+            for (size_t i = 0; i < pk.clips.size(); ++i) {
+                if (!names.insert(Lower(pk.clips[i].name)).second) { ++skippedDup; continue; }
+                idx.push_back(i);
+            }
+            if (idx.empty()) continue;
+            char t[200];
+            std::snprintf(t, sizeof t, "Пакет %zu/%zu: %s (%zu клипов)...", pi + 1, loaded.size(), pk.name.c_str(), idx.size());
+            SetText(dlg, IDC_A_STATUS, t);
+            UpdateWindow(dlg);
+            o.replace = replace && first;
+            std::string rep;
+            if (s.bridge.applyClips(rig, pk, idx, o, rep)) {
+                first = false;
+                ++added;
+                lastReport = rep;
+            } else {
+                ++failedPacks;
+                Log("Пакет %s: %s", pk.name.c_str(), rep.c_str());
+            }
+        }
+    }
+    FillSequences(dlg, s);
+    char t[300];
+    std::snprintf(t, sizeof t, "Готово: на таймлайне клипов %zu. Пакетов с клипами: %zu, не подошло пакетов: %zu, повторов пропущено: %zu",
+                  s.seqs.size(), added, failedPacks, skippedDup);
+    SetText(dlg, IDC_A_STATUS, t);
+    Log("%s", t);
+}
+
 INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
     AnimState* s = g_anim.get();
     switch (msg) {
@@ -678,11 +824,18 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         SetText(dlg, IDC_A_ORDER_LBL, "Эйлер");
         SetText(dlg, IDC_A_FPS_LBL, "FPS");
         SetText(dlg, IDC_A_GAP_LBL, "Пауза");
-        SetText(dlg, IDC_A_NOTES, "Note track + NeoDex");
-        SetText(dlg, IDC_A_APPEND, "Дописать к таймлайну");
-        SetText(dlg, IDC_A_LOAD, "Загрузить выбранные");
-        SetText(dlg, IDC_A_LOADALL, "Все (по фильтру) подряд");
-        SetText(dlg, IDC_A_BIND, "Bind-поза (снять анимацию)");
+        SetText(dlg, IDC_A_APPEND, "Сначала удалить загруженные (иначе новые - после них)");
+        SetText(dlg, IDC_A_LOAD, "Добавить выбранные");
+        SetText(dlg, IDC_A_LOADALL, "Все из пакета (фильтр)");
+        SetText(dlg, IDC_A_LOADCHAR, "ВСЕ анимации персонажа");
+        SetText(dlg, IDC_A_BIND, "Bind-поза (удалить все)");
+        SetText(dlg, IDC_A_SEQGROUP, "Загруженные клипы = Sequences WhiteoutDex (для MDX)");
+        SetText(dlg, IDC_A_PLAY, "Проиграть");
+        SetText(dlg, IDC_A_FULL, "Весь таймлайн");
+        SetText(dlg, IDC_A_DELSEQ, "Удалить клип");
+        SetText(dlg, IDC_A_NAME_LBL, "Имя");
+        SetText(dlg, IDC_A_NONLOOP, "NonLooping");
+        SetText(dlg, IDC_A_RENAME, "Переименовать");
         SetText(dlg, IDCANCEL, "Закрыть");
         if (s == nullptr) return TRUE;
         s->st.Load();
@@ -690,8 +843,11 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         ComboFill(dlg, IDC_A_ORDER, { "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX" }, s->st.GetInt("anim_order", 0));
         ComboFill(dlg, IDC_A_FPS, { "не менять", "30", "60" }, s->st.GetInt("anim_fps", 0));
         SetText(dlg, IDC_A_GAP, std::to_string(s->st.GetInt("anim_gap", 10)));
-        Check(dlg, IDC_A_NOTES, s->st.GetInt("anim_notes", 1) != 0);
-        Check(dlg, IDC_A_APPEND, s->st.GetInt("anim_append", 0) != 0);
+        Check(dlg, IDC_A_APPEND, s->st.GetInt("anim_replace", 0) != 0);
+        {
+            HWND nc = GetDlgItem(dlg, IDC_A_NAME);
+            for (const char* n : kWc3Names) SendMessageW(nc, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(n).c_str()));
+        }
         FillRigs(dlg, *s);
         FillPacks(dlg, *s, s->pkgPath);
         FillSequences(dlg, *s);
@@ -707,7 +863,10 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
             FillSequences(dlg, *s);
             return TRUE;
         case IDC_A_RIG:
-            if (code == CBN_SELCHANGE) FillPacks(dlg, *s, std::string());
+            if (code == CBN_SELCHANGE) {
+                FillPacks(dlg, *s, std::string());
+                FillSequences(dlg, *s);
+            }
             return TRUE;
         case IDC_A_PACK:
             if (code == CBN_SELCHANGE) {
@@ -728,6 +887,7 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
             if (code == LBN_DBLCLK) ApplySelected(dlg, *s, false);
             return TRUE;
         case IDC_A_LOAD: ApplySelected(dlg, *s, false); return TRUE;
+        case IDC_A_LOADCHAR: LoadCharacterAll(dlg, *s); return TRUE;
         case IDC_A_LOADALL: {
             if (s->shown.size() > 40 &&
                 MessageBoxW(dlg, Wide("Загрузить " + std::to_string(s->shown.size()) + " клипов подряд? Это может занять время.").c_str(),
@@ -747,10 +907,17 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
             return TRUE;
         }
         case IDC_A_SEQ:
-            if (code == LBN_DBLCLK) {
-                const int i = static_cast<int>(SendDlgItemMessageW(dlg, IDC_A_SEQ, LB_GETCURSEL, 0, 0));
-                if (i >= 0 && i < static_cast<int>(s->seqs.size()) && s->bridge.showRange)
-                    s->bridge.showRange(s->seqs[static_cast<size_t>(i)].start, s->seqs[static_cast<size_t>(i)].end);
+            if (code == LBN_SELCHANGE) SeqSelected(dlg, *s);
+            else if (code == LBN_DBLCLK) PlaySeq(dlg, *s);
+            return TRUE;
+        case IDC_A_PLAY: PlaySeq(dlg, *s); return TRUE;
+        case IDC_A_FULL: FullTimeline(dlg, *s); return TRUE;
+        case IDC_A_DELSEQ: DeleteSeq(dlg, *s); return TRUE;
+        case IDC_A_RENAME: RenameSeq(dlg, *s); return TRUE;
+        case IDC_A_NAME:
+            if (code == CBN_SELCHANGE) {
+                const int k = ComboSel(dlg, IDC_A_NAME);
+                if (k >= 0 && k < static_cast<int>(sizeof(kWc3Names) / sizeof(kWc3Names[0]))) Check(dlg, IDC_A_NONLOOP, Wc3NonLooping(kWc3Names[k]));
             }
             return TRUE;
         case IDCANCEL:

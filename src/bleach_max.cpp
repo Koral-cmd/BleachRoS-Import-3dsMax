@@ -721,88 +721,306 @@ std::vector<tam::M4> BindPose(const SceneRig& rig) {
     return pose;
 }
 
-std::vector<SequenceInfo> ReadSequences() {
-    std::vector<SequenceInfo> out;
-    Interface* ip = GetCOREInterface();
-    if (ip == nullptr || ip->GetRootNode() == nullptr) return out;
-    INode* w = ip->GetRootNode();
+// ------------------------------------------------------------
+//  Загруженные клипы = последовательности
+//
+//  Запись: note track на корневом helper'е скелета, два ключа на клип
+//  (начало и конец) со значением в формате Warcraft 3 / WhiteoutDex:
+//      "Имя"            или   "Имя"\r\nNonLooping
+//  Публикация в сцену (то, что видят Sequence Manager WhiteoutDex и его
+//  MDX-экспортёр):
+//    * есть WhiteoutDex (WdxSequenceStorage) или на rootNode уже есть блок
+//      последовательностей (seqNames) -> массивы блока; у оставшихся клипов
+//      (тот же кадр начала) сохраняются Rarity / MoveSpeed / Extents / Group;
+//    * иначе -> note track на rootNode (старый формат; WhiteoutDex сам
+//      переносит его в свой блок при открытии Sequence Manager).
+//  Перед каждым действием блок WhiteoutDex читается обратно: если клип
+//  сдвинули, переименовали или удалили там - так и остаётся.
+// ------------------------------------------------------------
+struct Loaded {
+    std::string name;
+    int start = 0, end = 0;     // кадры
+    bool nonLooping = false;
+};
+
+bool StartsWithI(const std::string& s, const char* p) {
+    const std::string l = Lower(s);
+    return l.compare(0, std::char_traits<char>::length(p), p) == 0;
+}
+
+// Анимации WC3, которые по смыслу не зациклены
+bool DefaultNonLooping(const std::string& name) {
+    if (StartsWithI(name, "spell channel")) return false;
+    for (const char* p : { "attack", "spell", "death", "decay", "birth", "dissipate", "morph", "stand hit" })
+        if (StartsWithI(name, p)) return true;
+    return false;
+}
+
+std::string NoteValue(const Loaded& l) {
+    std::string v = "\"" + l.name + "\"";
+    if (l.nonLooping) v += "\r\nNonLooping";
+    return v;
+}
+
+bool ParseNoteValue(const std::string& v, std::string& name, bool& nonLoop) {
+    nonLoop = Lower(v).find("nonlooping") != std::string::npos;
+    const size_t a = v.find('"');
+    if (a != std::string::npos) {
+        const size_t b = v.find('"', a + 1);
+        name = v.substr(a + 1, b == std::string::npos ? std::string::npos : b - a - 1);
+    } else {
+        const size_t e = v.find_first_of("\r\n");
+        name = v.substr(0, e);
+    }
+    return !name.empty();
+}
+
+std::vector<Loaded> NotesToLoaded(INode* holder) {
+    std::vector<Loaded> out;
+    if (holder == nullptr || holder->NumNoteTracks() < 1) return out;
+    DefNoteTrack* nt = static_cast<DefNoteTrack*>(holder->GetNoteTrack(0));
+    if (nt == nullptr) return out;
     const int tpf = std::max(1, GetTicksPerFrame());
-    for (int i = 0; i < w->NumNoteTracks(); ++i) {
-        DefNoteTrack* nt = static_cast<DefNoteTrack*>(w->GetNoteTrack(i));
-        if (nt == nullptr) continue;
-        const int n = nt->keys.Count();
-        for (int k = 0; k + 1 < n;) {
-            NoteKey* a = nt->keys[k];
-            NoteKey* b = nt->keys[k + 1];
-            if (a != nullptr && b != nullptr && std::wstring(a->note.data()) == std::wstring(b->note.data())) {
-                SequenceInfo s;
-                s.name = FromMax(a->note.data());
-                s.start = a->time / tpf;
-                s.end = b->time / tpf;
-                out.push_back(s);
-                k += 2;
-            } else {
-                ++k;
+    std::vector<std::pair<TimeValue, std::string>> keys;
+    for (int i = 0; i < nt->keys.Count(); ++i)
+        if (nt->keys[i] != nullptr) keys.emplace_back(nt->keys[i]->time, FromMax(nt->keys[i]->note.data()));
+    std::sort(keys.begin(), keys.end());
+    std::vector<bool> used(keys.size(), false);
+    for (size_t i = 0; i < keys.size(); ++i) {
+        if (used[i] || keys[i].second.empty()) continue;
+        for (size_t j = i + 1; j < keys.size(); ++j) {
+            if (used[j] || keys[j].second != keys[i].second) continue;
+            used[i] = used[j] = true;
+            Loaded l;
+            if (ParseNoteValue(keys[i].second, l.name, l.nonLooping)) {
+                l.start = keys[i].first / tpf;
+                l.end = keys[j].first / tpf;
+                out.push_back(l);
             }
+            break;
         }
     }
     return out;
 }
 
-void WriteNotes(const std::vector<SequenceInfo>& all, bool replace) {
-    Interface* ip = GetCOREInterface();
-    INode* w = ip->GetRootNode();
-    if (w == nullptr) return;
-    const int tpf = std::max(1, GetTicksPerFrame());
-    if (replace)
-        while (w->NumNoteTracks() > 0) w->DeleteNoteTrack(w->GetNoteTrack(0), TRUE);
-    DefNoteTrack* nt = nullptr;
-    bool fresh = false;
-    if (w->NumNoteTracks() > 0) nt = static_cast<DefNoteTrack*>(w->GetNoteTrack(0));
-    else { nt = static_cast<DefNoteTrack*>(NewDefaultNoteTrack()); fresh = true; }
+void LoadedToNotes(INode* holder, const std::vector<Loaded>& clips) {
+    if (holder == nullptr) return;
+    for (int i = holder->NumNoteTracks() - 1; i >= 0; --i) holder->DeleteNoteTrack(holder->GetNoteTrack(i), TRUE);
+    if (clips.empty()) return;
+    DefNoteTrack* nt = static_cast<DefNoteTrack*>(NewDefaultNoteTrack());
     if (nt == nullptr) return;
-    // в существующую дорожку дописываем только новые (их передают в all)
-    for (const SequenceInfo& s : all) {
-        const MSTR text = M(s.name);
-        NoteKey* k0 = new NoteKey(s.start * tpf, text, 0);
-        NoteKey* k1 = new NoteKey(s.end * tpf, text, 0);
+    const int tpf = std::max(1, GetTicksPerFrame());
+    for (const Loaded& c : clips) {
+        const MSTR v = M(NoteValue(c));
+        NoteKey* k0 = new NoteKey(c.start * tpf, v, 0);
+        NoteKey* k1 = new NoteKey(c.end * tpf, v, 0);
         nt->keys.Append(1, &k0);
         nt->keys.Append(1, &k1);
     }
-    if (fresh) w->AddNoteTrack(nt);
+    holder->AddNoteTrack(nt);
 }
 
-// Последовательности как Custom Attribute NeoDexSequenceData на корне сцены
-// (то же описание, что в WhiteoutDex/NeoDex и SWBF2 Import).
-void WriteNeoDex(const std::vector<SequenceInfo>& all) {
-    std::wstring names, starts, ends, nl, rar, sp, ext, grp;
-    for (size_t i = 0; i < all.size(); ++i) {
-        const wchar_t* c = i ? L"," : L"";
-        names += c + Q(all[i].name);
-        starts += c + std::to_wstring(all[i].start);
-        ends += c + std::to_wstring(all[i].end);
-        nl += c + std::wstring(L"false");
-        rar += c + std::wstring(L"0.0");
-        sp += c + std::wstring(L"0.0");
-        ext += c + std::wstring(L"\"\"");
-        grp += c + std::wstring(L"\"\"");
+void SortLoaded(std::vector<Loaded>& v) {
+    std::stable_sort(v.begin(), v.end(), [](const Loaded& a, const Loaded& b) { return a.start < b.start; });
+}
+
+std::string ReadTextFile(const std::wstring& p) {
+#if defined(_MSC_VER)
+    std::FILE* f = _wfopen(p.c_str(), L"rb");
+#else
+    std::FILE* f = std::fopen(Utf8(p).c_str(), "rb");
+#endif
+    if (f == nullptr) return std::string();
+    std::string all;
+    char buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) all.append(buf, n);
+    std::fclose(f);
+    if (all.size() >= 3 && static_cast<unsigned char>(all[0]) == 0xEF && static_cast<unsigned char>(all[1]) == 0xBB &&
+        static_cast<unsigned char>(all[2]) == 0xBF)
+        all.erase(0, 3);
+    return all;
+}
+
+void DeleteFileW2(const std::wstring& p) {
+#if defined(_MSC_VER)
+    _wremove(p.c_str());
+#else
+    std::remove(Utf8(p).c_str());
+#endif
+}
+
+std::wstring ScriptPath(const std::wstring& p) {
+    std::wstring r;
+    for (wchar_t c : p) r += (c == L'\\') ? std::wstring(L"/") : std::wstring(1, c);
+    return L"\"" + r + L"\"";
+}
+
+// Блок последовательностей на rootNode (WhiteoutDex или наследие NeoDex) -> список.
+// false: блока нет или он пустой (тогда правда - наша запись).
+bool PullSceneSequences(std::vector<Loaded>& out) {
+    const std::wstring file = DataDir() + L"\\seq_pull.txt";
+    DeleteFileW2(file);
+    std::wstring s = L"(\n local n = (try (rootNode.seqNames.count) catch (-1))\n"
+                     L" if n > 0 do (\n  local f = undefined\n"
+                     L"  try (f = createFile " + ScriptPath(file) + L" encoding:#utf8 writeBOM:false) catch (f = createFile " + ScriptPath(file) + L")\n"
+                     L"  for i = 1 to n do (\n"
+                     L"   local nl = (try (rootNode.nonLooping[i]) catch (false))\n"
+                     L"   format \"%\\t%\\t%\\t%\\n\" rootNode.seqNames[i] rootNode.startFrames[i] rootNode.endFrames[i] (if nl == true then 1 else 0) to:f\n"
+                     L"  )\n  close f\n )\n OK\n)\n";
+    if (!RunScript(s)) return false;
+    const std::string txt = ReadTextFile(file);
+    DeleteFileW2(file);
+    if (txt.empty()) return false;
+    out.clear();
+    size_t a = 0;
+    while (a < txt.size()) {
+        size_t e = txt.find('\n', a);
+        if (e == std::string::npos) e = txt.size();
+        std::string line = txt.substr(a, e - a);
+        a = e + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        std::vector<std::string> f;
+        size_t p = 0;
+        while (true) {
+            const size_t t = line.find('\t', p);
+            f.push_back(line.substr(p, t == std::string::npos ? std::string::npos : t - p));
+            if (t == std::string::npos) break;
+            p = t + 1;
+        }
+        if (f.size() < 4 || f[0].empty()) continue;
+        double s0 = 0, s1 = 0;
+        if (!ParseNum(f[1], s0) || !ParseNum(f[2], s1)) continue;
+        Loaded l;
+        l.name = f[0];
+        l.start = static_cast<int>(s0);
+        l.end = static_cast<int>(s1);
+        l.nonLooping = (f[3] == "1");
+        out.push_back(l);
     }
+    SortLoaded(out);
+    return true;
+}
+
+// Запись -> сцена (блок WhiteoutDex или note track на rootNode).
+void PublishSequences(const std::vector<Loaded>& clips) {
+    Interface* ip = GetCOREInterface();
+    const std::wstring file = DataDir() + L"\\seq_mode.txt";
+    DeleteFileW2(file);
+    std::wstring recs;
+    for (size_t i = 0; i < clips.size(); ++i)
+        recs += std::wstring(i ? L"," : L"") + L"#(" + Q(clips[i].name) + L"," + std::to_wstring(clips[i].start) + L"," +
+                std::to_wstring(clips[i].end) + L"," + (clips[i].nonLooping ? L"true" : L"false") + L")";
     std::wstring s =
-        L"(\n local ca = undefined\n try (ca = ::NeoDexSequenceCA) catch (ca = undefined)\n"
-        L" if (ca == undefined) do ca = attributes \"NeoDexSequenceData\" (\n  parameters main (\n"
-        L"   seqNames type:#stringTab tabSizeVariable:true\n   startFrames type:#intTab tabSizeVariable:true\n"
-        L"   endFrames type:#intTab tabSizeVariable:true\n   nonLooping type:#boolTab tabSizeVariable:true\n"
-        L"   rarity type:#floatTab tabSizeVariable:true\n   moveSpeed type:#floatTab tabSizeVariable:true\n"
-        L"   seqExtents type:#stringTab tabSizeVariable:true\n   sharedGroup type:#stringTab tabSizeVariable:true\n  )\n )\n"
-        L" for i = custAttributes.count rootNode to 1 by -1 do if (custAttributes.get rootNode i).name == \"NeoDexSequenceData\" do custAttributes.delete rootNode i\n";
-    if (!all.empty()) {
-        s += L" custAttributes.add rootNode ca\n";
-        s += L" rootNode.seqNames = #(" + names + L")\n rootNode.startFrames = #(" + starts + L")\n rootNode.endFrames = #(" + ends +
-             L")\n rootNode.nonLooping = #(" + nl + L")\n rootNode.rarity = #(" + rar + L")\n rootNode.moveSpeed = #(" + sp +
-             L")\n rootNode.seqExtents = #(" + ext + L")\n rootNode.sharedGroup = #(" + grp + L")\n";
+        L"(\n local recs = #(" + recs + L")\n"
+        L" local wdx = (try (::WdxSequenceStorage != undefined) catch (false))\n"
+        L" if wdx do try (::WdxSequenceStorage.ensureCA()) catch (wdx = false)\n"
+        L" local hasCA = (try (rootNode.seqNames.count >= 0) catch (false))\n"
+        L" local mode = \"notes\"\n"
+        L" if hasCA do (\n"
+        L"  fn grab p = (try (for v in (getProperty rootNode p) collect v) catch (#()))\n"
+        L"  local oS = grab #startFrames, oR = grab #rarity, oM = grab #moveSpeed, oX = grab #seqExtents, oG = grab #sharedGroup\n"
+        L"  local nN = #(), nS = #(), nE = #(), nL = #(), nR = #(), nM = #(), nX = #(), nG = #()\n"
+        L"  for r in recs do (\n"
+        L"   local k = findItem oS r[2]\n"
+        L"   append nN r[1]; append nS r[2]; append nE r[3]; append nL r[4]\n"
+        L"   append nR (if k > 0 and k <= oR.count then oR[k] else 0.0)\n"
+        L"   append nM (if k > 0 and k <= oM.count then oM[k] else 0.0)\n"
+        L"   append nX (if k > 0 and k <= oX.count then oX[k] else \"\")\n"
+        L"   append nG (if k > 0 and k <= oG.count then oG[k] else \"\")\n"
+        L"  )\n"
+        L"  rootNode.seqNames = nN; rootNode.startFrames = nS; rootNode.endFrames = nE; rootNode.nonLooping = nL\n"
+        L"  rootNode.rarity = nR; rootNode.moveSpeed = nM\n"
+        L"  try (rootNode.seqExtents = nX) catch ()\n"
+        L"  try (rootNode.sharedGroup = nG) catch ()\n"
+        L"  while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)\n"
+        L"  mode = (if wdx then \"wdx\" else \"ca\")\n"
+        L" )\n"
+        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\" mode to:f\n close f\n OK\n)\n";
+    const bool ran = RunScript(s);
+    std::string mode = ReadTextFile(file);
+    DeleteFileW2(file);
+    if (!ran || mode.empty()) mode = "notes";
+    if (mode.compare(0, 5, "notes") == 0 && ip != nullptr) LoadedToNotes(ip->GetRootNode(), clips);
+    Log("  последовательностей %zu -> %s", clips.size(),
+        mode.compare(0, 3, "wdx") == 0 ? "WhiteoutDex (Sequence Manager)" : mode.compare(0, 2, "ca") == 0 ? "блок seqNames на rootNode" : "note track на rootNode");
+}
+
+// Текущие клипы скелета: блок WhiteoutDex (если не пуст), иначе запись на helper'е.
+std::vector<Loaded> CurrentLoaded(INode* holder) {
+    std::vector<Loaded> fromScene;
+    if (PullSceneSequences(fromScene)) {
+        LoadedToNotes(holder, fromScene);
+        return fromScene;
     }
-    s += L" OK\n)\n";
-    if (!RunScript(s)) Log("[!] NeoDexSequenceData не записан");
+    std::vector<Loaded> r = NotesToLoaded(holder);
+    SortLoaded(r);
+    return r;
+}
+
+void StoreLoaded(INode* holder, std::vector<Loaded> clips) {
+    SortLoaded(clips);
+    LoadedToNotes(holder, clips);
+    PublishSequences(clips);
+}
+
+bool IsLinear(Control* c, ULONG id) { return c != nullptr && c->ClassID() == Class_ID(id, 0); }
+
+TimeValue LastKeyTime(const SceneRig& rig) {
+    TimeValue last = 0;
+    for (INode* n : rig.nodes) {
+        Control* tm = n->GetTMController();
+        if (tm == nullptr) continue;
+        for (Control* c : { tm->GetPositionController(), tm->GetRotationController(), tm->GetScaleController() }) {
+            const int k = c ? c->NumKeys() : 0;
+            if (k > 0) last = std::max(last, c->GetKeyTime(k - 1));
+        }
+    }
+    return last;
+}
+
+void DeleteKeysIn(const SceneRig& rig, int a, int b) {
+    const int tpf = std::max(1, GetTicksPerFrame());
+    const Interval iv(a * tpf, b * tpf);
+    for (INode* n : rig.nodes) {
+        Control* tm = n->GetTMController();
+        if (tm == nullptr) continue;
+        for (Control* c : { tm->GetPositionController(), tm->GetRotationController(), tm->GetScaleController() })
+            if (c != nullptr) c->DeleteTime(iv, TIME_INCLEFT | TIME_INCRIGHT | TIME_NOSLIDE);
+    }
+}
+
+void ResetControllers(Interface* ip, const SceneRig& rig) {
+    NoAnimate na;
+    const std::vector<tam::M4> bind = BindPose(rig);
+    for (size_t b = 0; b < rig.nodes.size(); ++b) {
+        Control* tmc = rig.nodes[b]->GetTMController();
+        if (tmc == nullptr) continue;
+        Control* p = FreshController(ip, CTRL_POSITION_CLASS_ID, LININTERP_POSITION_CLASS_ID);
+        Control* r = FreshController(ip, CTRL_ROTATION_CLASS_ID, LININTERP_ROTATION_CLASS_ID);
+        Control* s = FreshController(ip, CTRL_SCALE_CLASS_ID, LININTERP_SCALE_CLASS_ID);
+        if (p) tmc->SetPositionController(p);
+        if (r) tmc->SetRotationController(r);
+        if (s) tmc->SetScaleController(s);
+        BoneCtrl c;
+        c.pos = tmc->GetPositionController();
+        c.rot = tmc->GetRotationController();
+        c.scl = tmc->GetScaleController();
+        SetKey(c, 0, MaxLocal(rig, bind, b), true);
+    }
+}
+
+std::vector<SequenceInfo> ToInfo(const std::vector<Loaded>& v) {
+    std::vector<SequenceInfo> r;
+    for (const Loaded& l : v) {
+        SequenceInfo s;
+        s.name = l.name;
+        s.start = l.start;
+        s.end = l.end;
+        s.nonLooping = l.nonLooping;
+        r.push_back(s);
+    }
+    return r;
 }
 
 bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>& clipIdx, const AnimOptions& o, std::string& report) {
@@ -816,17 +1034,23 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     as.mode = static_cast<tam::AnimMode>(o.mode);
     for (int k = 0; k < 3 && k < static_cast<int>(o.order.size()); ++k) as.order[k] = o.order[static_cast<size_t>(k)];
 
-    // клипы
+    // ---- клипы: неподходящие отбрасываются, сцена не трогается ----
     struct Ready { std::string name; std::vector<std::vector<tam::M4>> poses; std::vector<char> anim; bool scale = false; };
     std::vector<Ready> ready;
-    size_t skipped = 0;
+    std::vector<std::string> rejected;
     for (size_t ci : clipIdx) {
         tam::Tmo clip;
-        if (!pkg.Clip(ci, clip, err)) { Log("  [!] %s", err.c_str()); ++skipped; continue; }
+        if (!pkg.Clip(ci, clip, err)) { Log("  [!] %s", err.c_str()); rejected.push_back(pkg.clips[ci].name + " (не читается)"); continue; }
         const tam::ClipMatch m = tam::MatchClip(clip, rig.skel, as);
         Log("АНИМ %s", tam::DescribeMatch(clip, m).c_str());
         for (const std::string& w : clip.warnings) Log("    [!] %s", w.c_str());
-        if (m.matched.empty()) { Log("    ни одна кость не совпала - пропуск"); ++skipped; continue; }
+        // подходит, если покрывает большую часть клипа или большую часть скелета
+        const size_t mt = m.matched.size(), cb = clip.hashes.size(), sb = rig.skel.bones.size();
+        if (mt == 0 || (mt * 3 < cb && mt * 3 < sb)) {
+            Log("    не подходит к скелету (%zu из %zu костей клипа) - пропуск", mt, cb);
+            rejected.push_back(clip.name + " (" + std::to_string(mt) + "/" + std::to_string(cb) + " костей)");
+            continue;
+        }
         Ready r;
         r.name = clip.name;
         tam::EvaluateClip(clip, rig.skel, as, m, r.poses, r.anim);
@@ -837,21 +1061,33 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
         ready.push_back(std::move(r));
     }
     if (ready.empty()) {
-        report = "Ни один клип не подошёл к этому скелету (кости не совпали по хешам).";
+        report = "Ни один клип не подходит к скелету \"" + FromMax(rig.root->GetName()) + "\" - ничего не изменено.";
+        if (!rejected.empty()) report += "\nОтброшены: " + rejected.front() + (rejected.size() > 1 ? " и ещё " + std::to_string(rejected.size() - 1) : "");
+        Log("%s", report.c_str());
         return false;
     }
 
-    if (o.fps > 0 && GetFrameRate() != o.fps) SetFrameRate(o.fps);
+    if (o.fps > 0 && GetFrameRate() != o.fps && TIME_TICKSPERSEC % o.fps == 0) SetFrameRate(o.fps);
     const int tpf = std::max(1, GetTicksPerFrame());
-    const bool single = ready.size() == 1 && !o.append;
-    const std::vector<SequenceInfo> old = o.append ? ReadSequences() : std::vector<SequenceInfo>();
+    const int gap = std::max(1, o.gap);
+
+    std::vector<Loaded> loaded = CurrentLoaded(rig.root);
+    if (o.replace && !loaded.empty()) {
+        RedrawOff ro(ip);
+        ResetControllers(ip, rig);
+        Log("  загруженные клипы (%zu) удалены перед загрузкой", loaded.size());
+        loaded.clear();
+    }
     int lastEnd = 0;
-    for (const SequenceInfo& s : old) lastEnd = std::max(lastEnd, s.end);
+    for (const Loaded& l : loaded) lastEnd = std::max(lastEnd, l.end);
+    lastEnd = std::max(lastEnd, static_cast<int>(LastKeyTime(rig) / tpf));
+    const bool first = loaded.empty() && lastEnd == 0;
     const bool anyScale = std::any_of(ready.begin(), ready.end(), [](const Ready& r) { return r.scale; });
 
-    std::vector<SequenceInfo> added;
     size_t keys = 0;
-    int rangeEnd = 0;
+    int firstStart = 0;
+    std::vector<Loaded> added;
+    bool withScale = anyScale;
     {
         RedrawOff ro(ip);
         const std::vector<tam::M4> bind = BindPose(rig);
@@ -861,83 +1097,83 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
             for (size_t b = 0; b < rig.nodes.size(); ++b) {
                 Control* tmc = rig.nodes[b]->GetTMController();
                 if (tmc == nullptr) continue;
-                bool keep = false;
-                if (o.append) {
-                    Control* p0 = tmc->GetPositionController();
-                    Control* r0 = tmc->GetRotationController();
-                    if (p0 && r0 && (p0->NumKeys() > 0 || r0->NumKeys() > 0)) {
-                        ctl[b].pos = p0;
-                        ctl[b].rot = r0;
-                        ctl[b].scl = tmc->GetScaleController();
-                        keep = true;
-                    }
-                }
-                if (!keep) {
+                Control* p0 = tmc->GetPositionController();
+                Control* r0 = tmc->GetRotationController();
+                Control* s0 = tmc->GetScaleController();
+                const bool keep = !first && IsLinear(p0, LININTERP_POSITION_CLASS_ID) && IsLinear(r0, LININTERP_ROTATION_CLASS_ID);
+                if (keep) {
+                    ctl[b].pos = p0;
+                    ctl[b].rot = r0;
+                } else {
                     Control* p = FreshController(ip, CTRL_POSITION_CLASS_ID, LININTERP_POSITION_CLASS_ID);
                     Control* r = FreshController(ip, CTRL_ROTATION_CLASS_ID, LININTERP_ROTATION_CLASS_ID);
                     if (p) tmc->SetPositionController(p);
                     if (r) tmc->SetRotationController(r);
-                    if (anyScale) {
-                        Control* s = FreshController(ip, CTRL_SCALE_CLASS_ID, LININTERP_SCALE_CLASS_ID);
-                        if (s) tmc->SetScaleController(s);
-                    }
                     ctl[b].pos = tmc->GetPositionController();
                     ctl[b].rot = tmc->GetRotationController();
-                    ctl[b].scl = tmc->GetScaleController();
-                    // значение без ключей = bind
-                    SetKey(ctl[b], 0, MaxLocal(rig, bind, b), anyScale);
                 }
+                if (IsLinear(s0, LININTERP_SCALE_CLASS_ID) && !first) {
+                    ctl[b].scl = s0;
+                    if (s0->NumKeys() > 0) withScale = true;
+                } else if (anyScale || s0 == nullptr || !IsLinear(s0, LININTERP_SCALE_CLASS_ID)) {
+                    Control* s = FreshController(ip, CTRL_SCALE_CLASS_ID, LININTERP_SCALE_CLASS_ID);
+                    if (s) tmc->SetScaleController(s);
+                    ctl[b].scl = tmc->GetScaleController();
+                }
+                if (!keep) SetKey(ctl[b], 0, MaxLocal(rig, bind, b), true);   // без ключей = bind
             }
         }
         AnimateOn();
-        int at = single ? 0 : (o.append && !old.empty() ? lastEnd + o.gap : o.gap);
-        if (!single && !(o.append && !old.empty())) {
-            // кадр 0 = bind-поза (для экспорта в игры с отдельной "stand" позой)
-            for (size_t b = 0; b < rig.nodes.size(); ++b) { SetKey(ctl[b], 0, MaxLocal(rig, bind, b), anyScale); ++keys; }
+        int at = first ? gap : lastEnd + gap;
+        if (first) {
+            // кадр 0 = bind-поза
+            for (size_t b = 0; b < rig.nodes.size(); ++b) { SetKey(ctl[b], 0, MaxLocal(rig, bind, b), withScale); ++keys; }
         }
+        firstStart = at;
         for (const Ready& r : ready) {
             const int frames = static_cast<int>(r.poses.size());
             const int start = at, end = at + std::max(1, frames - 1);
             for (size_t b = 0; b < rig.nodes.size(); ++b) {
                 if (r.anim[b]) {
                     for (int f = 0; f < frames; ++f) {
-                        SetKey(ctl[b], (start + f) * tpf, MaxLocal(rig, r.poses[static_cast<size_t>(f)], b), anyScale);
+                        SetKey(ctl[b], (start + f) * tpf, MaxLocal(rig, r.poses[static_cast<size_t>(f)], b), withScale);
                         ++keys;
                     }
-                } else if (!single) {
-                    // кость вне клипа: держим её локаль на обоих краях, чтобы клипы не перетекали
-                    SetKey(ctl[b], start * tpf, MaxLocal(rig, r.poses.front(), b), anyScale);
-                    SetKey(ctl[b], end * tpf, MaxLocal(rig, r.poses.back(), b), anyScale);
+                } else {
+                    // кость вне клипа: держим её позу на обоих краях, чтобы клипы не перетекали друг в друга
+                    SetKey(ctl[b], start * tpf, MaxLocal(rig, r.poses.front(), b), withScale);
+                    SetKey(ctl[b], end * tpf, MaxLocal(rig, r.poses.back(), b), withScale);
                     keys += 2;
                 }
             }
-            SequenceInfo s;
-            s.name = r.name;
-            s.start = start;
-            s.end = end;
-            added.push_back(s);
-            rangeEnd = std::max(rangeEnd, end);
-            at = end + o.gap;
+            Loaded l;
+            l.name = r.name;
+            l.start = start;
+            l.end = end;
+            l.nonLooping = DefaultNonLooping(r.name);
+            added.push_back(l);
+            at = end + gap;
         }
         AnimateOff();
     }
-    rangeEnd = std::max(rangeEnd, lastEnd);
-    ip->SetAnimRange(Interval(0, std::max(rangeEnd, 1) * tpf));
-    ip->SetTime(single ? 0 : added.front().start * tpf, TRUE);
+    loaded.insert(loaded.end(), added.begin(), added.end());
+    StoreLoaded(rig.root, loaded);
 
-    if (o.notes) {
-        WriteNotes(added, !o.append);
-        std::vector<SequenceInfo> all = old;
-        all.insert(all.end(), added.begin(), added.end());
-        WriteNeoDex(all);
-    }
+    // диапазон пользователя не обрезаем, только расширяем
+    int end = 1;
+    for (const Loaded& l : loaded) end = std::max(end, l.end);
+    const Interval cur = ip->GetAnimRange();
+    if (end * tpf > cur.End()) ip->SetAnimRange(Interval(std::min<TimeValue>(cur.Start(), 0), end * tpf));
+    ip->SetTime(firstStart * tpf, TRUE);
     ip->RedrawViews(ip->GetTime());
 
-    char b[400];
-    std::snprintf(b, sizeof b, "%s: клипов %zu (пропущено %zu), ключей %zu, кадры 0-%d, %d fps, линейные контроллеры%s",
-                  single ? "Клип загружен" : "Клипы на таймлайне", ready.size(), skipped, keys, rangeEnd, GetFrameRate(),
-                  anyScale ? " (+ масштаб)" : "");
+    char b[500];
+    std::snprintf(b, sizeof b, "Добавлено клипов: %zu (кадры %d-%d), всего на таймлайне: %zu, ключей %zu, %d fps, линейные контроллеры%s",
+                  added.size(), added.front().start, added.back().end, loaded.size(), keys, GetFrameRate(), withScale ? " (+ масштаб)" : "");
     report = b;
+    if (!rejected.empty())
+        report += "\nОтброшено (не подходят к скелету): " + std::to_string(rejected.size()) + " - " + rejected.front() +
+                  (rejected.size() > 1 ? ", ..." : "");
     Log("%s", report.c_str());
     return true;
 }
@@ -949,28 +1185,60 @@ bool ResetBind(ULONG handle, std::string& report) {
     if (!ReadRig(handle, rig, err)) { report = err; return false; }
     {
         RedrawOff ro(ip);
-        NoAnimate na;
-        const std::vector<tam::M4> bind = BindPose(rig);
-        for (size_t b = 0; b < rig.nodes.size(); ++b) {
-            Control* tmc = rig.nodes[b]->GetTMController();
-            if (tmc == nullptr) continue;
-            Control* p = FreshController(ip, CTRL_POSITION_CLASS_ID, LININTERP_POSITION_CLASS_ID);
-            Control* r = FreshController(ip, CTRL_ROTATION_CLASS_ID, LININTERP_ROTATION_CLASS_ID);
-            Control* s = FreshController(ip, CTRL_SCALE_CLASS_ID, LININTERP_SCALE_CLASS_ID);
-            if (p) tmc->SetPositionController(p);
-            if (r) tmc->SetRotationController(r);
-            if (s) tmc->SetScaleController(s);
-            BoneCtrl c;
-            c.pos = tmc->GetPositionController();
-            c.rot = tmc->GetRotationController();
-            c.scl = tmc->GetScaleController();
-            SetKey(c, 0, MaxLocal(rig, bind, b), true);
-        }
-        INode* w = ip->GetRootNode();
-        while (w != nullptr && w->NumNoteTracks() > 0) w->DeleteNoteTrack(w->GetNoteTrack(0), TRUE);
+        ResetControllers(ip, rig);
     }
-    WriteNeoDex(std::vector<SequenceInfo>());
-    report = "Скелет в bind-позе, ключи и последовательности удалены";
+    StoreLoaded(rig.root, std::vector<Loaded>());
+    report = "Скелет в bind-позе, все клипы и последовательности удалены";
+    return true;
+}
+
+std::vector<SequenceInfo> Sequences(ULONG handle) {
+    SceneRig rig;
+    std::string err;
+    if (!ReadRig(handle, rig, err)) return std::vector<SequenceInfo>();
+    return ToInfo(CurrentLoaded(rig.root));
+}
+
+bool DeleteSequence(ULONG handle, size_t index, std::string& report) {
+    LogOpen(true);
+    Interface* ip = GetCOREInterface();
+    SceneRig rig;
+    std::string err;
+    if (!ReadRig(handle, rig, err)) { report = err; return false; }
+    std::vector<Loaded> loaded = CurrentLoaded(rig.root);
+    if (index >= loaded.size()) { report = "Выбери загруженный клип"; return false; }
+    const Loaded gone = loaded[index];
+    loaded.erase(loaded.begin() + static_cast<long>(index));
+    {
+        RedrawOff ro(ip);
+        NoAnimate na;
+        // ключи клипа удаляются, время не сдвигается - остальные клипы на своих местах
+        DeleteKeysIn(rig, gone.start, gone.end);
+    }
+    StoreLoaded(rig.root, loaded);
+    char b[300];
+    std::snprintf(b, sizeof b, "\"%s\" удалён (кадры %d-%d), осталось клипов: %zu", gone.name.c_str(), gone.start, gone.end, loaded.size());
+    report = b;
+    Log("%s", report.c_str());
+    return true;
+}
+
+bool RenameSequence(ULONG handle, size_t index, const std::string& name, bool nonLooping, std::string& report) {
+    SceneRig rig;
+    std::string err;
+    if (!ReadRig(handle, rig, err)) { report = err; return false; }
+    std::vector<Loaded> loaded = CurrentLoaded(rig.root);
+    if (index >= loaded.size()) { report = "Выбери загруженный клип"; return false; }
+    std::string n = name;
+    while (!n.empty() && (n.back() == ' ' || n.back() == '\t')) n.pop_back();
+    while (!n.empty() && (n.front() == ' ' || n.front() == '\t')) n.erase(0, 1);
+    n.erase(std::remove(n.begin(), n.end(), '"'), n.end());
+    if (n.empty()) { report = "Пустое имя"; return false; }
+    const std::string old = loaded[index].name;
+    loaded[index].name = n;
+    loaded[index].nonLooping = nonLooping;
+    StoreLoaded(rig.root, loaded);
+    report = "\"" + old + "\" -> \"" + n + "\"" + (nonLooping ? " (NonLooping)" : "");
     return true;
 }
 
@@ -1052,8 +1320,14 @@ UiBridge MakeBridge() {
     b.resetBind = [](unsigned long h, std::string& rep) {
         try { return ResetBind(h, rep); } catch (...) { rep = "Ошибка"; return false; }
     };
-    b.sequences = []() {
-        try { return ReadSequences(); } catch (...) { return std::vector<SequenceInfo>(); }
+    b.sequences = [](unsigned long h) {
+        try { return Sequences(h); } catch (...) { return std::vector<SequenceInfo>(); }
+    };
+    b.deleteSequence = [](unsigned long h, size_t i, std::string& rep) {
+        try { return DeleteSequence(h, i, rep); } catch (...) { rep = "Ошибка"; return false; }
+    };
+    b.renameSequence = [](unsigned long h, size_t i, const std::string& n, bool nl, std::string& rep) {
+        try { return RenameSequence(h, i, n, nl, rep); } catch (...) { rep = "Ошибка"; return false; }
     };
     b.showRange = [](int a, int e) {
         try { ShowRange(a, e); } catch (...) {}

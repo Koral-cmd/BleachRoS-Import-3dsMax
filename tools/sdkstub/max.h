@@ -213,9 +213,15 @@ private:
     std::vector<T> v_;
 };
 
+#define TIME_INCLEFT  (1<<10)
+#define TIME_INCRIGHT (1<<11)
+#define TIME_NOSLIDE  (1<<12)
+class Interval;
 class Animatable {
 public:
     virtual ~Animatable() {}
+    virtual Class_ID ClassID() { return Class_ID(); }
+    virtual void DeleteTime(Interval, unsigned long) {}
     virtual void* GetInterface(ULONG) { return nullptr; }
     virtual IParamBlock2* GetParamBlockByID(int) { return nullptr; }
     virtual IParamBlock2* GetParamBlock(int) { return nullptr; }
@@ -349,6 +355,7 @@ public:
     INode* GetINodeByName(const MCHAR*) { return nullptr; }
     INode* GetINodeByHandle(ULONG) { return nullptr; }
     void SetAnimRange(Interval) {}
+    Interval GetAnimRange() { return Interval(); }
     void SetTime(TimeValue, BOOL = TRUE) {}
     void DisableSceneRedraw() {}
     int RegisterDlgWnd(HWND) { return 1; }

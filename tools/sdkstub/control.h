@@ -11,6 +11,7 @@ public:
     virtual BOOL SetRotationController(Control*) { return TRUE; }
     virtual Control* GetPositionController() { return nullptr; }
     virtual int NumKeys() { return 0; }
+    virtual TimeValue GetKeyTime(int) { return 0; }
     virtual Control* GetRotationController() { return nullptr; }
     virtual BOOL SetScaleController(Control*) { return TRUE; }
     virtual Control* GetScaleController() { return nullptr; }
