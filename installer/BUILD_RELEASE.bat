@@ -7,7 +7,7 @@ REM    dist\BleachRoSImport-<версия>-Setup.exe (если есть Inno Set
 REM ================================================================
 setlocal
 cd /d "%~dp0.."
-set "VER=1.4.1"
+set "VER=1.4.2"
 set "STAGE=dist\stage"
 if not exist output goto no_output
 if exist dist rmdir /s /q dist

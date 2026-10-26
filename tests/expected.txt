@@ -107,9 +107,9 @@ CPHY pl995_cos00 joints=2 links=0
   joint 2092501092 parent 3853539806 invMass=1.00 damping=0.20 elasticity=0.060 limit=0.520 grav=1.00 len=0.5000
 PHYS dynamic=1
   frame 0 max offset from rigid 0.0000
-  frame 10 max offset from rigid 0.0797
-  frame 20 max offset from rigid 0.0310
-  frame 40 max offset from rigid 0.0001
+  frame 10 max offset from rigid 0.0060
+  frame 20 max offset from rigid 0.0010
+  frame 40 max offset from rigid 0.0002
   frame 59 max offset from rigid 0.0000
 TMD2 pl996_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=5 tables=2
 TMD2 pl996_wep00_00: ver=0x209 flags=0x2416 stride=28 verts=3 tris=1 models=1 mats=1 tex=1 bones=2 tables=0

@@ -60,8 +60,8 @@ std::string CommonClipName(const std::vector<std::string>& names);
 // упругость к позе покоя, предел угла, длины связей. Корни цепочек идут за
 // анимацией. animated[] у затронутых костей становится 1.
 struct PhysicsSettings {
-    double fps = 30.0;          // кадров клипа в секунду
-    int substeps = 2;           // шагов симуляции на кадр (игра - 60 Гц)
+    double fps = 60.0;          // кадр клипа = такт игры (60 Гц)
+    int substeps = 1;           // шагов симуляции на кадр
     int warmup = 30;            // шагов "успокоения" на первой позе
     double gravity = 9.8;       // в единицах игры (метры) / с^2
 };

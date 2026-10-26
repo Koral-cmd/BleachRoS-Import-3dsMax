@@ -374,9 +374,39 @@ size_t SimulatePhysics(const Skeleton& skel, const std::vector<PhysJoint>& joint
         }
     };
 
+    // Инерция (translateInert / rotateInert ~0.98): почти всё движение тела частица
+    // получает сразу, как жёсткая. Отстаёт только остаток - иначе при беге и
+    // рывках с перемещением корня ткань тянется далеко позади ног.
+    std::vector<int> anchor(nb, -1);
+    for (int bi : topo) {
+        const size_t b = static_cast<size_t>(bi);
+        if (!dyn[b]) continue;
+        int a = skel.bones[b].parent;
+        while (a >= 0 && dyn[static_cast<size_t>(a)]) a = skel.bones[static_cast<size_t>(a)].parent;
+        anchor[b] = a;
+    }
+    auto carry = [&](const std::vector<M4>& from, const std::vector<M4>& to) {
+        for (size_t b = 0; b < nb; ++b) {
+            if (!dyn[b] || anchor[b] < 0) continue;
+            const size_t a = static_cast<size_t>(anchor[b]);
+            M4 inv;
+            if (!Inverse(from[a], inv)) continue;
+            const M4 d = Mul(inv, to[a]);
+            const PhysJoint& pj = joints[static_cast<size_t>(jointOf[b])];
+            const double k = std::min(1.0, std::max(0.0, 0.5 * (static_cast<double>(pj.translateInert) + static_cast<double>(pj.rotateInert))));
+            double q[3];
+            TransformPoint(d, x[b].x, x[b].y, x[b].z, q);
+            x[b] = x[b] + (V3{ q[0], q[1], q[2] } - x[b]) * k;
+            TransformPoint(d, prev[b].x, prev[b].y, prev[b].z, q);
+            prev[b] = prev[b] + (V3{ q[0], q[1], q[2] } - prev[b]) * k;
+        }
+    };
+
     for (int k = 0; k < ps.warmup; ++k) step(poses.front());
-    std::vector<M4> res;
+    std::vector<M4> res, last = poses.front();
     for (size_t f = 0; f < frames; ++f) {
+        if (f > 0) carry(last, poses[f]);
+        last = poses[f];
         for (int k = 0; k < std::max(1, ps.substeps); ++k) step(poses[f]);
         solve(poses[f], res);
         poses[f] = res;

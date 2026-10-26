@@ -19,6 +19,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <map>
 #include <cstdlib>
 #include <cstring>
 #if defined(_WIN32)
@@ -142,28 +143,43 @@ int main(int argc, char** argv) {
         std::vector<std::string> log;
         BuildSkeleton(parts, skel, opt, log);
         const std::vector<M4> rest = skel.RestWorlds();
-        const int frames = 60;
-        std::vector<std::vector<M4>> poses(frames, rest);
+        int frames = 60;
+        std::vector<std::vector<M4>> poses(static_cast<size_t>(frames), rest);
         // BLEACH_PHYS_ALL=1: все кости "в клипе" (как у настоящих клипов, где ключи есть и у ткани)
         std::vector<char> anim(skel.bones.size(), std::getenv("BLEACH_PHYS_ALL") ? 1 : 0);
         anim[0] = 1;
-        for (int f = 0; f < frames; ++f) {
-            const double dx = (f < 15) ? 0.08 * f : 0.08 * 15;   // рывок вперёд (по +Z) и стоп
-            M4 mv = Ident();
-            mv.m[14] = dx;
-            for (size_t b = 0; b < skel.bones.size(); ++b) poses[static_cast<size_t>(f)][b] = Mul(rest[b], mv);
+        const bool real = argc >= 7;   // ... pack.tactpkg clip - настоящий клип вместо рывка
+        if (real) {
+            TactPkg pk;
+            if (!LoadTact(argv[5], pk, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+            for (size_t i = 0; i < pk.clips.size(); ++i) {
+                if (pk.clips[i].name != argv[6]) continue;
+                Tmo tm;
+                if (!pk.Clip(i, tm, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+                AnimSettings as;
+                const ClipMatch m = MatchClip(tm, skel, as);
+                EvaluateClip(tm, skel, as, m, poses, anim);
+                frames = static_cast<int>(poses.size());
+            }
+        } else {
+            for (int f = 0; f < frames; ++f) {
+                const double dx = (f < 15) ? 0.08 * f : 0.08 * 15;   // рывок вперёд (по +Z) и стоп
+                M4 mv = Ident();
+                mv.m[14] = dx;
+                for (size_t b = 0; b < skel.bones.size(); ++b) poses[static_cast<size_t>(f)][b] = Mul(rest[b], mv);
+            }
         }
+        const std::vector<std::vector<M4>> before = poses;
         PhysicsSettings ps;
         const size_t nd = SimulatePhysics(skel, c.joints, c.links, ps, poses, anim);
         std::printf("PHYS dynamic=%zu\n", nd);
         // отклонение концов цепочек от жёсткой позы
         double maxDev = 0;
         for (int f : { 0, 10, 20, 40, 59 }) {
+            if (f >= frames) continue;
             double dev = 0;
             for (size_t b = 0; b < skel.bones.size(); ++b) {
-                M4 mv = Ident();
-                mv.m[14] = (f < 15) ? 0.08 * f : 1.2;
-                const M4 rigid = Mul(rest[b], mv);
+                const M4& rigid = before[static_cast<size_t>(f)][b];
                 const double dd = std::sqrt(std::pow(rigid.m[12] - poses[static_cast<size_t>(f)][b].m[12], 2) +
                                             std::pow(rigid.m[13] - poses[static_cast<size_t>(f)][b].m[13], 2) +
                                             std::pow(rigid.m[14] - poses[static_cast<size_t>(f)][b].m[14], 2));
@@ -175,7 +191,10 @@ int main(int argc, char** argv) {
         if (argc >= 5) {
             std::vector<PartMesh> meshes;
             BuildMeshes(parts, 0, skel, opt, meshes);
+            const char* const env = std::getenv("BLEACH_PHYS_NOSIM");
+            if (env) poses = before;   // для сравнения: без физики
             for (int f : { 0, 10, 20, 40 }) {
+                if (f >= frames) continue;
                 const std::string path = std::string(argv[4]) + "_" + std::to_string(f) + ".obj";
                 std::FILE* fo = std::fopen(path.c_str(), "w");
                 if (!fo) continue;
@@ -203,6 +222,33 @@ int main(int argc, char** argv) {
                     base += m.pos.size() / 3;
                 }
                 std::fclose(fo);
+            }
+        }
+        return 0;
+    }
+    // --curves pack.tactpkg clip model.tmd2: ключи клипа по костям (сколько, размах значений)
+    if (a1 == "--curves" && argc >= 5) {
+        TactPkg p;
+        Tmd2 t;
+        std::string err;
+        if (!LoadTact(argv[2], p, err) || !LoadTmd2(argv[4], t, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+        std::map<uint32_t, std::string> names;
+        for (const Tmd2Bone& b : t.bones) names[b.hash] = b.name;
+        for (size_t i = 0; i < p.clips.size(); ++i) {
+            if (p.clips[i].name != argv[3]) continue;
+            Tmo c;
+            if (!p.Clip(i, c, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+            std::printf("CLIP %s frames=%d bones=%zu\n", c.name.c_str(), c.length, c.hashes.size());
+            for (size_t b = 0; b < c.hashes.size(); ++b) {
+                std::printf("  %-28s", names.count(c.hashes[b]) ? names[c.hashes[b]].c_str() : std::to_string(c.hashes[b]).c_str());
+                for (int k = 0; k < 9; ++k) {
+                    const std::vector<Key>& kk = c.curves[b * 9 + static_cast<size_t>(k)];
+                    float lo = 1e30f, hi = -1e30f;
+                    for (const Key& x : kk) { lo = std::min(lo, x.value); hi = std::max(hi, x.value); }
+                    if (kk.empty()) std::printf(" %c-", "TTTRRRSSS"[k]);
+                    else std::printf(" %c%zu[%.3f]", "TTTRRRSSS"[k], kk.size(), hi - lo);
+                }
+                std::printf("\n");
             }
         }
         return 0;
