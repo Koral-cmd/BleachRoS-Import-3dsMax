@@ -57,6 +57,7 @@ struct UiBridge {
     void* parent = nullptr;      // HWND главного окна Max
     std::function<bool(const std::vector<ImportItem>&, const ImportOptions&, std::string&)> importModels;
     std::function<std::vector<RigInfo>()> listRigs;
+    std::function<std::vector<uint32_t>(unsigned long)> rigHashes;   // хеши костей скелета в сцене
     std::function<unsigned long()> selectedRig;
     std::function<bool(unsigned long, const tam::TactPkg&, const std::vector<size_t>&, const AnimOptions&, std::string&)> applyClips;
     std::function<bool(unsigned long, std::string&)> resetBind;

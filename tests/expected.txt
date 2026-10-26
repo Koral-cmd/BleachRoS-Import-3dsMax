@@ -89,10 +89,10 @@ SKELETON 4
     note: вершины в локальных координатах костей (до кости: как в файле 1.400, как локальные 0.224 (высота скелета 1.725))
   tex 0 DXT1 4x4 alpha=0 bytes=144
   tex 1 DXT5 4x4 alpha=1 bytes=144
-TACTPKG pl999 clips=2
-  other script.lua (?, 10 Byte)
-  clip 0 idle_delta frames=11 bones=3
-  clip 1 pose_abs frames=5 bones=2
+TACTPKG pl999 container=actmng_pkg magic=actmng_pkg clips=2
+  other script.lua (данные, 10 байт)
+  clip 0 idle_delta frames=11 bones=3 hashes=3 where=pl999/motion
+  clip 1 pose_abs frames=5 bones=2 hashes=2 where=pl999/motion
 TMD2 pl999_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=3 tables=2
   layout: pos w0 i0 w1 i1 nrm col uv0
   model 'body' parts=2
@@ -110,10 +110,10 @@ idle_delta: кадров 11, костей в клипе 3, найдено 2, н�
   F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
   F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
   F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
-TACTPKG pl999 clips=2
-  other script.lua (?, 10 Byte)
-  clip 0 idle_delta frames=11 bones=3
-  clip 1 pose_abs frames=5 bones=2
+TACTPKG pl999 container=actmng_pkg magic=actmng_pkg clips=2
+  other script.lua (данные, 10 байт)
+  clip 0 idle_delta frames=11 bones=3 hashes=3 where=pl999/motion
+  clip 1 pose_abs frames=5 bones=2 hashes=2 where=pl999/motion
 TMD2 pl999_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=3 tables=2
   layout: pos w0 i0 w1 i1 nrm col uv0
   model 'body' parts=2
@@ -131,3 +131,51 @@ pose_abs: кадров 5, костей в клипе 2, найдено 2, нет
   F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
   F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
   F0 head anim=1 t=(0.00000 1.60000 0.00000) dAngleToBind=0.00
+TACTPKG pl999 container=actmng_pkg magic=actmng_pkg clips=2
+  other script.lua (данные, 10 байт)
+  clip 0 idle_delta frames=11 bones=3 hashes=3 where=pl999/motion
+  clip 1 pose_abs frames=5 bones=2 hashes=2 where=pl999/motion
+TACTPKG garganta container=CATS magic=CATS clips=2
+  extra actmtl_pkg garganta/fx/garganta_uv_scroll size=40
+  clip 0 garganta_open frames=5 bones=2 hashes=2 where=garganta/mot
+  clip 1 raw.tmo frames=11 bones=3 hashes=3 where=garganta
+TACTPKG single container=tmo magic=tmo1 clips=1
+  clip 0 single frames=11 bones=3 hashes=3 where=
+TACTPKG unknown container=поиск по сигнатуре magic=XFX1 clips=2
+  clip 0 unknown#0 frames=5 bones=2 hashes=2 where=unknown
+  clip 1 unknown#1 frames=11 bones=3 hashes=3 where=unknown
+TACTPKG pl997 container=actmng_pkg magic=actmng_pkg clips=2
+  other blend (motblend_file, 32 байт)
+  extra actmtl_pkg pl997/mtl/garganta_uv_scroll size=40
+  clip 0 idle_delta frames=11 bones=3 hashes=3 where=pl997/motion
+  clip 1 pose_abs frames=5 bones=2 hashes=2 where=pl997/motion
+raw.tmo: кадров 11, костей в клипе 3, найдено 2, нет в скелете 1, режим delta (авто: abs 0 / delta 1)
+  F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
+  F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
+  F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
+unknown#1: кадров 11, костей в клипе 3, найдено 2, нет в скелете 1, режим delta (авто: abs 0 / delta 1)
+  F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
+  F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
+  F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
+FIND bones=3 files=13 checked=12 opened=4
+  found garganta [CATS] clips=2 fit=2 best=2/2
+  found pl997 [actmng_pkg] clips=2 fit=2 best=2/3
+  found pl999 [actmng_pkg] clips=2 fit=2 best=2/3
+  found single [tmo] clips=1 fit=1 best=2/3
+  related pl999 [actmng_pkg]
+  related pl999_cos00_00 [?]
+  related pl999_cos00_00 [tmd0]
+  related pl999_face00_00 [tmd0]
+  related pl999_hair00_00 [tmd0]
+  related pl999_hair01_00 [tmd0]
+  related pl999_wep00_00 [tmd0]
+  related pl999_wep00_00_lod [tmd0]
+  magic ? 1
+  magic CATS 1
+  magic XFX1 1
+  magic actmng_pkg 2
+  magic tmd0 6
+  magic tmo1 1
+FIND bones=3 files=14 checked=13 opened=5
+  found pl999_fx [поиск по сигнатуре] clips=2 fit=2 best=2/2
+  related pl999_fx [XFX1]

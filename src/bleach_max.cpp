@@ -1048,7 +1048,7 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
         for (const std::string& w : clip.warnings) Log("    [!] %s", w.c_str());
         // подходит, если покрывает большую часть клипа или большую часть скелета
         const size_t mt = m.matched.size(), cb = clip.hashes.size(), sb = rig.skel.bones.size();
-        if (mt == 0 || (mt * 3 < cb && mt * 3 < sb)) {
+        if (!tam::ClipFits(mt, cb, sb)) {
             Log("    не подходит к скелету (%zu из %zu костей клипа) - пропуск", mt, cb);
             rejected.push_back(clip.name + " (" + std::to_string(mt) + "/" + std::to_string(cb) + " костей)");
             continue;
@@ -1309,6 +1309,17 @@ UiBridge MakeBridge() {
     };
     b.listRigs = []() {
         try { return ListRigs(); } catch (...) { return std::vector<RigInfo>(); }
+    };
+    b.rigHashes = [](unsigned long h) {
+        std::vector<uint32_t> r;
+        try {
+            SceneRig rig;
+            std::string err;
+            if (ReadRig(h, rig, err))
+                for (const tam::SkelBone& sb : rig.skel.bones) r.push_back(sb.hash);
+        } catch (...) {
+        }
+        return r;
     };
     b.selectedRig = []() -> unsigned long {
         try { return SelectedRig(); } catch (...) { return 0; }

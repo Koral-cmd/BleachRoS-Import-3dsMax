@@ -19,6 +19,7 @@
 #include "tam_math.h"
 
 #include <cstdint>
+#include <deque>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -150,15 +151,32 @@ struct ClipEntry {
     std::string name;
     size_t ofs = 0, size = 0;      // внутри буфера пакета
     int frames = 0, bones = 0;      // из заголовка (быстро)
+    int blob = -1;                  // -1 = data, иначе blobs[blob] (вложенный PZZE)
+    std::string where;              // путь внутри контейнера (для лога)
 };
 
+// Прочее содержимое пакета: acttmv_pkg (вершинная анимация), actmtl_pkg
+// (анимация материалов: UV, цвет, прозрачность - эффекты), скрипты...
+struct SubEntry {
+    std::string where, type, name;
+    size_t size = 0;
+};
+
+// Пакет анимаций. Понимает:
+//   .tactpkg  actmng_pkg -> acttmo_pkg -> tmo1
+//   acttmo_pkg сам по себе, одиночный клип tmo, архивы CATS (.cat),
+//   вложенные PZZE; в незнакомом контейнере ищет клипы tmo по сигнатуре.
 struct TactPkg {
     std::string name;
+    std::string container;           // что было снаружи: actmng_pkg / CATS / tmo / поиск по сигнатуре
     std::vector<uint8_t> data;       // распакованное содержимое
+    std::deque<std::vector<uint8_t>> blobs;   // распакованные вложенные PZZE
     std::vector<ClipEntry> clips;
     std::vector<std::string> other;
+    std::vector<SubEntry> extras;
     void Read();                      // из `data`
     bool Clip(size_t i, Tmo& out, std::string& err) const;
+    bool ClipBones(size_t i, std::vector<uint32_t>& hashes) const;   // только хеши костей (быстро)
 };
 
 // Загрузчики (путь UTF-8). false + err при ошибке.
@@ -173,6 +191,10 @@ struct Tmd2Quick {
     uint32_t verts = 0, tris = 0, models = 0, bones = 0;
 };
 Tmd2Quick QuickTmd2(const std::string& path);
+
+// Что внутри файла: первые байты после распаковки PZZE ("actmng_pkg", "tmd0", "CATS"...).
+// Читает только начало файла. pzze = файл сжат.
+std::string SniffMagic(const std::string& path, bool* pzze = nullptr);
 
 std::string FileStem(const std::string& path);   // без папки и расширения
 

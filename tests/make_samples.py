@@ -203,7 +203,26 @@ c_abs=tmo1([H("spine"),H("head")],[
 tmo_pkg=pkg("acttmo_pkg",[("idle_delta",c_delta),("pose_abs",c_abs)])
 mng=pkg("actmng_pkg",[("script.lua",b"print('x')"),("motion",tmo_pkg)])
 open(os.path.join(out,"pl999.tactpkg"),"wb").write(pzze("tact",mng))
+# ---------- контейнеры: CATS, одиночный tmo, незнакомый контейнер, actmtl ----------
+def cats(entries):
+    # magic, unk, count, headersOffset(относительно 16) ; записи: u64 name, u64 ofs, u64 size (+выравнивание 16)
+    n=len(entries); hdr_end=16+32*n
+    names=b""; name_ofs=[]
+    for (nm,_) in entries: name_ofs.append(hdr_end+len(names)); names+=nm.encode()+b"\0"
+    blob=align(b"\0"*(hdr_end+len(names))); data=b""; offs=[]
+    for (_,d) in entries: offs.append(len(blob)+len(data)); data+=d; data=align(data)
+    out=b"CATS"+struct.pack("<III",0,n,0)
+    for i,(nm,d) in enumerate(entries): out+=struct.pack("<QQQ",name_ofs[i],offs[i],len(d))+b"\0"*8
+    out+=names; out=align(out)
+    return out+data
+mtl=pkg("actmtl_pkg",[("garganta_uv_scroll",b"\x01"*40)])
+obj_tmo=pkg("acttmo_pkg",[("garganta_open",c_abs)])
+open(os.path.join(out,"garganta.cat"),"wb").write(cats([("mdl.cat",b"tmd0"+b"\0"*60),("mot",pzze("tact",obj_tmo)),("raw.tmo",c_delta),("fx",mtl)]))
+open(os.path.join(out,"single.tmo"),"wb").write(pzze("tmo\0",c_delta))
+open(os.path.join(out,"unknown.bin"),"wb").write(b"XFX1"+b"\0"*12+c_abs+b"\0"*8+c_delta)
+open(os.path.join(out,"pl997.tactpkg"),"wb").write(pzze("tact",pkg("actmng_pkg",[("motion",tmo_pkg),("mtl",mtl),("blend",b"motblend_file\0\0\0"+b"\0"*16)])))
 print("ok", out)
+
 
 # ---------- лицо с ДРУГОЙ bind-позой общей кости (голова в начале координат) ----------
 fb=[("head",-1,trans(0,0,0)),("eye_L",0,trans(0.1,0.1,0.05))]

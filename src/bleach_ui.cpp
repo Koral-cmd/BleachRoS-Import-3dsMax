@@ -22,10 +22,12 @@
 #include "bleach_core.h"
 #include "bleach_res.h"
 #include "bleach_ui.h"
+#include "tam_anim.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -552,6 +554,12 @@ struct AnimState {
     std::string pkgPath;
     std::vector<size_t> shown;            // индексы клипов в списке
     std::vector<SequenceInfo> seqs;
+    std::vector<uint32_t> rigHash;        // кости выбранного скелета
+    std::vector<int> clipMatch;           // совпало костей у клипа (-1 = не читается)
+    // результаты "Искать по костям" (для скелета foundFor)
+    unsigned long foundFor = 0;
+    std::vector<std::string> found;
+    std::map<std::string, std::string> foundNote;   // путь -> "подходит 12 из 40"
 };
 
 HWND g_animDlg = nullptr;
@@ -638,6 +646,26 @@ void RenameSeq(HWND dlg, AnimState& s) {
     FillSequences(dlg, s, i);
 }
 
+// Сколько костей каждого клипа есть в скелете (быстро, только заголовки).
+void ComputeMatches(AnimState& s) {
+    s.clipMatch.clear();
+    if (!s.pkg) return;
+    const std::set<uint32_t> rig(s.rigHash.begin(), s.rigHash.end());
+    std::vector<uint32_t> h;
+    for (size_t i = 0; i < s.pkg->clips.size(); ++i) {
+        if (!s.pkg->ClipBones(i, h)) { s.clipMatch.push_back(-1); continue; }
+        int m = 0;
+        for (uint32_t x : h)
+            if (rig.count(x)) ++m;
+        s.clipMatch.push_back(m);
+    }
+}
+
+bool ClipOk(const AnimState& s, size_t i) {
+    if (s.rigHash.empty() || i >= s.clipMatch.size() || s.clipMatch[i] < 0) return true;   // неизвестно - не прятать
+    return tam::ClipFits(static_cast<size_t>(s.clipMatch[i]), static_cast<size_t>(s.pkg->clips[i].bones), s.rigHash.size());
+}
+
 void FillClips(HWND dlg, AnimState& s) {
     HWND lb = GetDlgItem(dlg, IDC_A_CLIPS);
     SendMessageW(lb, LB_RESETCONTENT, 0, 0);
@@ -647,16 +675,26 @@ void FillClips(HWND dlg, AnimState& s) {
         return;
     }
     const std::string q = Lower(GetText(dlg, IDC_A_SEARCH));
+    const bool fitOnly = Checked(dlg, IDC_A_FITONLY);
+    size_t fits = 0;
     for (size_t i = 0; i < s.pkg->clips.size(); ++i) {
         const tam::ClipEntry& c = s.pkg->clips[i];
+        const bool ok = ClipOk(s, i);
+        if (ok) ++fits;
         if (!q.empty() && Lower(c.name).find(q) == std::string::npos) continue;
-        char t[200];
-        std::snprintf(t, sizeof t, "%s   (%d кадр., %d кост.)", c.name.c_str(), c.frames, c.bones);
+        if (fitOnly && !ok) continue;
+        char t[300];
+        if (!s.rigHash.empty() && i < s.clipMatch.size() && s.clipMatch[i] >= 0)
+            std::snprintf(t, sizeof t, "%s %s   (%d кадр., костей %d/%d)", ok ? "+" : "-", c.name.c_str(), c.frames,
+                          s.clipMatch[i], c.bones);
+        else
+            std::snprintf(t, sizeof t, "%s   (%d кадр., %d кост.)", c.name.c_str(), c.frames, c.bones);
         SendMessageW(lb, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(t).c_str()));
         s.shown.push_back(i);
     }
-    char t[80];
-    std::snprintf(t, sizeof t, "%zu из %zu", s.shown.size(), s.pkg->clips.size());
+    char t[120];
+    if (!s.rigHash.empty()) std::snprintf(t, sizeof t, "%zu из %zu, подходят %zu", s.shown.size(), s.pkg->clips.size(), fits);
+    else std::snprintf(t, sizeof t, "%zu из %zu", s.shown.size(), s.pkg->clips.size());
     SetText(dlg, IDC_A_COUNT, t);
 }
 
@@ -672,14 +710,19 @@ void OpenPack(HWND dlg, AnimState& s, const std::string& path) {
         FillClips(dlg, s);
         return;
     }
-    Log("Пакет %s: клипов %zu", path.c_str(), p->clips.size());
+    Log("Пакет %s (%s): клипов %zu", path.c_str(), p->container.c_str(), p->clips.size());
     for (const std::string& o : p->other) Log("  прочее: %s", o.c_str());
+    for (const tam::SubEntry& e : p->extras) Log("  %s: %s/%s (%zu байт)", e.type.c_str(), e.where.c_str(), e.name.c_str(), e.size);
     s.pkg = std::move(p);
     s.pkgPath = path;
     s.st.Set("last_pack", path);
     s.st.Save();
+    ComputeMatches(s);
     FillClips(dlg, s);
-    SetText(dlg, IDC_A_STATUS, "Клипов: " + std::to_string(s.pkg->clips.size()));
+    std::string msg = "Клипов: " + std::to_string(s.pkg->clips.size());
+    if (s.pkg->clips.empty() && !s.pkg->extras.empty())
+        msg += ". Здесь только эффекты/материалы (" + std::to_string(s.pkg->extras.size()) + ", см. лог) - их пока не читаю";
+    SetText(dlg, IDC_A_STATUS, msg);
 }
 
 std::string CurrentRigChar(HWND dlg, const AnimState& s) {
@@ -687,17 +730,26 @@ std::string CurrentRigChar(HWND dlg, const AnimState& s) {
     return (r >= 0 && r < static_cast<int>(s.rigs.size())) ? s.rigs[static_cast<size_t>(r)].charId : std::string();
 }
 
+void RefreshRigHashes(HWND dlg, AnimState& s) {
+    const unsigned long rig = CurrentRig(dlg, s);
+    s.rigHash = (s.bridge.rigHashes && rig != 0) ? s.bridge.rigHashes(rig) : std::vector<uint32_t>();
+}
+
 void FillPacks(HWND dlg, AnimState& s, const std::string& prefer) {
     s.packs.clear();
     std::string err;
     if (EnsureIndex(s.st, false, err)) s.packs = MotionsFor(g_index, CurrentRigChar(dlg, s));
+    if (s.foundFor != 0 && s.foundFor == CurrentRig(dlg, s))
+        for (const std::string& f : s.found)
+            if (std::find(s.packs.begin(), s.packs.end(), f) == s.packs.end()) s.packs.push_back(f);
     const std::string last = s.st.Get("last_pack");
     if (!prefer.empty() && std::find(s.packs.begin(), s.packs.end(), prefer) == s.packs.end()) s.packs.insert(s.packs.begin(), prefer);
     if (!last.empty() && std::find(s.packs.begin(), s.packs.end(), last) == s.packs.end()) s.packs.push_back(last);
     std::vector<std::string> names;
     int sel = s.packs.empty() ? -1 : 0;
     for (size_t i = 0; i < s.packs.size(); ++i) {
-        names.push_back(tam::FileStem(s.packs[i]) + "   " + s.packs[i]);
+        const auto fn = s.foundNote.find(s.packs[i]);
+        names.push_back(tam::FileStem(s.packs[i]) + (fn != s.foundNote.end() ? "   [" + fn->second + "]" : std::string()) + "   " + s.packs[i]);
         if (!prefer.empty() && s.packs[i] == prefer) sel = static_cast<int>(i);
     }
     ComboFill(dlg, IDC_A_PACK, names, sel);
@@ -795,9 +847,12 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
     std::vector<std::string> packs;
     std::string err;
     if (EnsureIndex(s.st, false, err)) packs = MotionsFor(g_index, charId);
+    if (s.foundFor == rig)
+        for (const std::string& f : s.found)
+            if (std::find(packs.begin(), packs.end(), f) == packs.end()) packs.push_back(f);
     if (packs.empty() && !s.pkgPath.empty()) packs.push_back(s.pkgPath);
     if (packs.empty()) {
-        SetText(dlg, IDC_A_STATUS, "Пакеты анимаций персонажа " + charId + " не найдены (Motion\\" + charId + "*.tactpkg)");
+        SetText(dlg, IDC_A_STATUS, "Пакеты анимаций " + charId + " не найдены (Motion\\" + charId + "*.tactpkg) - попробуй \"Искать по костям\"");
         return;
     }
     // список клипов заранее - чтобы показать, сколько будет
@@ -862,6 +917,85 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
     Log("%s", t);
 }
 
+// Все файлы игры: где лежат клипы, которые подходят к костям скелета в сцене.
+// Нужен для объектов и эффектов (garganta...), у которых нет Motion\<id>.tactpkg.
+void FindByBones(HWND dlg, AnimState& s) {
+    const unsigned long rig = CurrentRig(dlg, s);
+    if (rig == 0) { SetText(dlg, IDC_A_STATUS, "Нет скелета в сцене"); return; }
+    RefreshRigHashes(dlg, s);
+    if (s.rigHash.empty()) { SetText(dlg, IDC_A_STATUS, "У скелета нет костей с данными импорта"); return; }
+    std::string err;
+    if (!EnsureIndex(s.st, false, err)) {
+        SetText(dlg, IDC_A_STATUS, "Папка игры: " + err + " (задай её в окне импорта модели)");
+        return;
+    }
+    const std::string charId = CurrentRigChar(dlg, s);
+    const std::string q = "Проверить все файлы игры (" + std::to_string(g_index.files.size()) +
+                          ") и найти анимации, которые подходят к костям скелета \"" + charId + "\" (" +
+                          std::to_string(s.rigHash.size()) + " костей)?\n\nЭто может занять минуту. Esc - остановить.";
+    if (MessageBoxW(dlg, Wide(q).c_str(), L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
+
+    AnimSearch res;
+    {
+        WaitCursor wc;
+        DWORD last = 0;
+        FindAnimations(g_index, s.rigHash, charId, res, [&](size_t done, size_t total, const std::string& f) {
+            const DWORD now = GetTickCount();
+            if (now - last > 150) {
+                last = now;
+                char t[400];
+                std::snprintf(t, sizeof t, "Поиск %zu/%zu (Esc - стоп): %s", done, total, tam::FileStem(f).c_str());
+                SetText(dlg, IDC_A_STATUS, t);
+                UpdateWindow(GetDlgItem(dlg, IDC_A_STATUS));
+                MSG m;
+                while (PeekMessageW(&m, nullptr, WM_PAINT, WM_PAINT, PM_REMOVE)) DispatchMessageW(&m);
+                SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            }
+            return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) == 0;
+        });
+    }
+
+    LogOpen(true);
+    Log("ПОИСК ПО КОСТЯМ: скелет %s, костей %zu; файлов %zu, проверено %zu, открыто пакетов %zu%s", charId.c_str(),
+        s.rigHash.size(), g_index.files.size(), res.checked, res.opened, res.cancelled ? " (остановлен)" : "");
+    for (const AnimSource& a : res.found) {
+        Log("  НАЙДЕНО %s [%s]: клипов %zu, подходят %zu (лучший: %zu из %zu костей)", a.path.c_str(), a.container.c_str(),
+            a.clips, a.fit, a.bestMatched, a.bestBones);
+        for (const std::string& e : a.extras) Log("      эффект/материал: %s", e.c_str());
+    }
+    Log("  файлы с \"%s\" в имени: %zu", charId.c_str(), res.related.size());
+    for (const auto& r : res.related) Log("    %s   [%s]", r.first.c_str(), r.second.c_str());
+    Log("  расширения файлов игры:");
+    for (const auto& kv : res.extCount) Log("    %-12s %zu", kv.first.c_str(), kv.second);
+    Log("  сигнатуры внутри (кроме моделей/текстур):");
+    for (const auto& kv : res.magicCount) Log("    %-18s %zu", kv.first.c_str(), kv.second);
+
+    s.foundFor = rig;
+    s.found.clear();
+    s.foundNote.clear();
+    for (const AnimSource& a : res.found) {
+        if (a.fit == 0) continue;
+        s.found.push_back(a.path);
+        s.foundNote[a.path] = "подходят " + std::to_string(a.fit) + " из " + std::to_string(a.clips);
+    }
+    size_t fx = 0;
+    for (const AnimSource& a : res.found) fx += a.extras.size();
+    FillPacks(dlg, s, s.found.empty() ? s.pkgPath : s.found.front());
+    char t[400];
+    std::snprintf(t, sizeof t, "Найдено пакетов с подходящими клипами: %zu%s. Подробно - в логе", s.found.size(),
+                  res.cancelled ? " (поиск остановлен)" : "");
+    SetText(dlg, IDC_A_STATUS, t);
+    if (s.found.empty()) {
+        std::string m = "Анимаций костей для \"" + charId + "\" в файлах игры не найдено.\n\n";
+        m += "Файлов с \"" + charId + "\" в имени: " + std::to_string(res.related.size());
+        for (size_t i = 0; i < res.related.size() && i < 8; ++i)
+            m += "\n  " + tam::FileStem(res.related[i].first) + "  [" + res.related[i].second + "]";
+        if (fx > 0) m += "\n\nНайдены анимации эффектов/материалов с этим именем: " + std::to_string(fx) + " (их формат ещё не разобран).";
+        m += "\n\nСкорее всего, объект анимирует эффект (материал/UV), а не кости. Пришли лог Downloads\\Import bleach.log - разберу.";
+        MessageBoxW(dlg, Wide(m).c_str(), L"BLEACH RoS - поиск", MB_ICONINFORMATION);
+    }
+}
+
 INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
     AnimState* s = g_anim.get();
     switch (msg) {
@@ -870,7 +1004,9 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         SetText(dlg, IDC_A_RIG_LBL, "Скелет");
         SetText(dlg, IDC_A_REFRESH, "Обновить");
         SetText(dlg, IDC_A_PACK_LBL, "Пакет");
-        SetText(dlg, IDC_A_OPEN, "Открыть файл...");
+        SetText(dlg, IDC_A_OPEN, "Открыть...");
+        SetText(dlg, IDC_A_FIND, "Искать по костям");
+        SetText(dlg, IDC_A_FITONLY, "Только подходящие");
         SetText(dlg, IDC_A_SEARCH_LBL, "Поиск");
         SetText(dlg, IDC_A_MODE_LBL, "Режим");
         SetText(dlg, IDC_A_ORDER_LBL, "Эйлер");
@@ -896,11 +1032,13 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         ComboFill(dlg, IDC_A_FPS, { "не менять", "30", "60" }, s->st.GetInt("anim_fps", 0));
         SetText(dlg, IDC_A_GAP, std::to_string(s->st.GetInt("anim_gap", 10)));
         Check(dlg, IDC_A_APPEND, s->st.GetInt("anim_replace", 0) != 0);
+        Check(dlg, IDC_A_FITONLY, s->st.GetInt("anim_fitonly", 0) != 0);
         {
             HWND nc = GetDlgItem(dlg, IDC_A_NAME);
             for (const char* n : kWc3Names) SendMessageW(nc, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(n).c_str()));
         }
         FillRigs(dlg, *s);
+        RefreshRigHashes(dlg, *s);
         FillPacks(dlg, *s, s->pkgPath);
         FillSequences(dlg, *s);
         return TRUE;
@@ -911,11 +1049,13 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         switch (id) {
         case IDC_A_REFRESH:
             FillRigs(dlg, *s);
+            RefreshRigHashes(dlg, *s);
             FillPacks(dlg, *s, s->pkgPath);
             FillSequences(dlg, *s);
             return TRUE;
         case IDC_A_RIG:
             if (code == CBN_SELCHANGE) {
+                RefreshRigHashes(dlg, *s);
                 FillPacks(dlg, *s, std::string());
                 FillSequences(dlg, *s);
             }
@@ -928,10 +1068,16 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
             return TRUE;
         case IDC_A_OPEN: {
             std::string f;
-            if (PickFile(dlg, L"Пакеты анимаций (*.tactpkg)\0*.tactpkg\0Все файлы\0*.*\0", L"Открыть .tactpkg", f))
+            if (PickFile(dlg, L"Анимации (*.tactpkg;*.tmo;*.cat)\0*.tactpkg;*.tmo;*.cat\0Все файлы\0*.*\0", L"Открыть анимации", f))
                 FillPacks(dlg, *s, f);
             return TRUE;
         }
+        case IDC_A_FIND: FindByBones(dlg, *s); return TRUE;
+        case IDC_A_FITONLY:
+            s->st.SetInt("anim_fitonly", Checked(dlg, IDC_A_FITONLY));
+            s->st.Save();
+            FillClips(dlg, *s);
+            return TRUE;
         case IDC_A_SEARCH:
             if (code == EN_CHANGE) FillClips(dlg, *s);
             return TRUE;
@@ -1010,8 +1156,10 @@ void ShowAnimDialog(const UiBridge& b, const std::string& preselectPack) {
         // уже открыто: обновить и показать
         if (g_anim) {
             g_anim->bridge = b;
-            if (!preselectPack.empty()) FillPacks(g_animDlg, *g_anim, preselectPack);
             FillRigs(g_animDlg, *g_anim);
+            RefreshRigHashes(g_animDlg, *g_anim);
+            if (!preselectPack.empty()) FillPacks(g_animDlg, *g_anim, preselectPack);
+            else { ComputeMatches(*g_anim); FillClips(g_animDlg, *g_anim); }
             FillSequences(g_animDlg, *g_anim);
         }
         ShowWindow(g_animDlg, SW_SHOW);

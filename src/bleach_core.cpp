@@ -3,7 +3,9 @@
 // ============================================================
 #include "bleach_core.h"
 
+#include "tam_anim.h"
 #include "tam_assemble.h"
+#include "tam_formats.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -12,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -361,6 +364,13 @@ bool ScanGame(const std::string& root, GameIndex& out, std::string& err) {
         ++out.scanned;
         const fs::path& p = it->path();
         const std::string ext = Lower(p.extension().u8string());
+        {
+            AnyFile a;
+            a.path = p.u8string();
+            a.ext = ext;
+            a.size = it->file_size(ec);
+            out.files.push_back(a);
+        }
         if (ext == ".tactpkg") {
             out.motions.push_back(p.u8string());
             continue;
@@ -394,6 +404,7 @@ bool ScanGame(const std::string& root, GameIndex& out, std::string& err) {
         }
     }
     std::sort(out.motions.begin(), out.motions.end());
+    std::sort(out.files.begin(), out.files.end(), [](const AnyFile& a, const AnyFile& b) { return a.path < b.path; });
     return true;
 }
 
@@ -402,20 +413,88 @@ std::vector<std::string> MotionsFor(const GameIndex& g, const std::string& charI
     const std::string id = Lower(charId);
     for (const std::string& m : g.motions) {
         const std::string stem = Lower(fs::u8path(m).stem().u8string());
-        if (!id.empty() && stem.compare(0, id.size(), id) == 0) r.push_back(m);
+        if (id.empty()) continue;
+        // pl000*.tactpkg; для объектов (garganta...) - имя где угодно в названии
+        if (stem.compare(0, id.size(), id) == 0 || (id.size() > 5 && stem.find(id) != std::string::npos)) r.push_back(m);
     }
     return r;
 }
 
+namespace {
+bool SkipExt(const std::string& e) {
+    static const char* const k[] = { ".tmd2", ".lds", ".dds", ".usm", ".awb", ".acb", ".wem", ".bnk", ".bank", ".exe", ".dll",
+                                     ".pdb", ".ini", ".txt", ".json", ".xml", ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".ogg",
+                                     ".wav", ".mp4", ".webm", ".bik", ".ttf", ".otf", ".ico", ".log", ".cfg", ".vdf", ".manifest",
+                                     ".url", ".lnk", ".html", ".htm", ".pdf", ".md" };
+    for (const char* x : k)
+        if (e == x) return true;
+    return false;
+}
+
+bool AnimMagic(const std::string& m) {
+    return m.compare(0, 3, "act") == 0 || m.compare(0, 4, "CATS") == 0 || m.compare(0, 3, "tmo") == 0;
+}
+} // namespace
+
+void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, const std::string& rigId, AnimSearch& out,
+                    const std::function<bool(size_t, size_t, const std::string&)>& progress) {
+    out = AnimSearch();
+    const std::unordered_set<uint32_t> rig(rigHashes.begin(), rigHashes.end());
+    const std::string id = Lower(rigId);
+    const size_t total = g.files.size();
+    std::vector<uint32_t> h;
+    for (size_t fi = 0; fi < total; ++fi) {
+        const AnyFile& f = g.files[fi];
+        ++out.extCount[f.ext.empty() ? std::string("(без расширения)") : f.ext];
+        const std::string stem = Lower(tam::FileStem(f.path));
+        const bool related = id.size() >= 3 && stem.find(id) != std::string::npos;
+        if (progress && (fi % 16) == 0 && !progress(fi, total, f.path)) { out.cancelled = true; break; }
+        if (SkipExt(f.ext) && !related) continue;
+        ++out.checked;
+        const std::string magic = tam::SniffMagic(f.path);
+        ++out.magicCount[magic.empty() ? std::string("(пусто)") : magic];
+        if (related) out.related.push_back({ f.path, magic });
+        // контейнеры анимаций; файлы с именем объекта - ещё и по сигнатуре tmo внутри
+        const bool modelOrTex = magic == "tmd0" || magic == "DDS " || f.ext == ".lds";
+        if (!AnimMagic(magic) && f.ext != ".tactpkg" && !(related && !modelOrTex)) continue;
+        if (f.size > (768ull << 20)) continue;
+        tam::TactPkg pk;
+        std::string err;
+        if (!tam::LoadTact(f.path, pk, err)) continue;
+        ++out.opened;
+        AnimSource src;
+        src.path = f.path;
+        src.container = pk.container;
+        src.clips = pk.clips.size();
+        for (size_t i = 0; i < pk.clips.size(); ++i) {
+            if (!pk.ClipBones(i, h)) continue;
+            size_t m = 0;
+            for (uint32_t x : h)
+                if (rig.count(x)) ++m;
+            if (tam::ClipFits(m, h.size(), rig.size())) ++src.fit;
+            if (m > src.bestMatched) { src.bestMatched = m; src.bestBones = h.size(); }
+        }
+        if (!id.empty())
+            for (const tam::SubEntry& e : pk.extras)
+                if (Lower(e.name).find(id) != std::string::npos || Lower(e.where).find(id) != std::string::npos)
+                    src.extras.push_back(e.type + " " + e.where + "/" + e.name + " (" + std::to_string(e.size) + " байт)");
+        if (src.fit > 0 || !src.extras.empty()) out.found.push_back(src);
+    }
+    std::stable_sort(out.found.begin(), out.found.end(), [](const AnimSource& a, const AnimSource& b) {
+        if (a.fit != b.fit) return a.fit > b.fit;
+        return a.extras.size() > b.extras.size();
+    });
+}
+
 std::string CharacterName(const std::string& id) {
-    // Список с форума ResHax (по моделям "кукол"); DLC без имён.
+    // Список с форума ResHax (по моделям "кукол") + DLC и поддержка (по игре).
     static const std::map<std::string, const char*> n = {
         { "pl000", "Ichigo Kurosaki" }, { "pl001", "Ichigo (Hollow)" }, { "pl002", "Ichigo (Final Getsugatensho)" },
         { "pl003", "Uryu Ishida" }, { "pl004", "Yasutora Sado" }, { "pl006", "Kisuke Urahara" },
         { "pl007", "Yoruichi Shihoin" }, { "pl008", "Renji Abarai" }, { "pl010", "Rukia Kuchiki" },
         { "pl011", "Shuhei Hisagi" }, { "pl012", "Rangiku Matsumoto" }, { "pl013", "Izuru Kira" },
-        { "pl014", "Ikkaku Madarame" }, { "pl016", "Genryusai Yamamoto" }, { "pl017", "Soi Fon" },
-        { "pl018", "Gin Ichimaru" }, { "pl020", "Sosuke Aizen" }, { "pl022", "Byakuya Kuchiki" },
+        { "pl014", "Ikkaku Madarame" }, { "pl015", "Yumichika Ayasegawa" }, { "pl016", "Genryusai Yamamoto" }, { "pl017", "Soi Fon" },
+        { "pl018", "Gin Ichimaru" }, { "pl019", "Retsu Unohana" }, { "pl020", "Sosuke Aizen" }, { "pl021", "Sosuke Aizen (butterfly form)" }, { "pl022", "Byakuya Kuchiki" },
         { "pl023", "Sajin Komamura" }, { "pl024", "Shunsui Kyoraku" }, { "pl025", "Kaname Tosen" },
         { "pl026", "Toshiro Hitsugaya" }, { "pl027", "Kenpachi Zaraki" }, { "pl029", "Mayuri Kurotsuchi" },
         { "pl031", "Kaien Shiba" }, { "pl032", "Shinji Hirako" }, { "pl033", "Coyote Starrk" },

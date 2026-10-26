@@ -2,13 +2,16 @@
 //  bleachdump - консольная проверка тех же читателей, что в плагине.
 //
 //    bleachdump model.tmd2 [ещё.tmd2 ...]   модель(и), скелет, меши
-//    bleachdump pack.tactpkg                 список клипов
+//    bleachdump pack.tactpkg|.tmo|.cat       список клипов (и эффектов/материалов)
 //    bleachdump pack.tactpkg clip model.tmd2 [ещё.tmd2]
 //                                            клип на скелет: совпадения, режим
 //    bleachdump tex.lds                      текстуры
+//    bleachdump --find <папка игры> model.tmd2 [ещё.tmd2]
+//                                            где во всей игре клипы под этот скелет
 //
 //  Вывод - обычный текст; его удобно прислать при проблемах.
 // ============================================================
+#include "bleach_core.h"
 #include "tam_anim.h"
 #include "tam_assemble.h"
 #include "tam_formats.h"
@@ -95,6 +98,39 @@ int main(int argc, char** argv) {
         return 1;
     }
     const std::string a1 = argv[1];
+    if (a1 == "--find" && argc >= 4) {
+        std::vector<std::string> files;
+        for (int i = 3; i < argc; ++i) files.push_back(argv[i]);
+        Skeleton skel;
+        {
+            std::vector<Tmd2> tmds(files.size());
+            std::vector<Part> parts(files.size());
+            for (size_t i = 0; i < files.size(); ++i) {
+                std::string err;
+                if (!LoadTmd2(files[i], tmds[i], err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+                parts[i].tmd = &tmds[i];
+            }
+            BuildOptions opt;
+            std::vector<std::string> log;
+            BuildSkeleton(parts, skel, opt, log);
+        }
+        std::vector<uint32_t> hashes;
+        for (const SkelBone& b : skel.bones) hashes.push_back(b.hash);
+        bleach::GameIndex g;
+        std::string err;
+        if (!bleach::ScanGame(argv[2], g, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+        bleach::AnimSearch res;
+        bleach::FindAnimations(g, hashes, bleach::CharIdOf(FileStem(files[0])), res, nullptr);
+        std::printf("FIND bones=%zu files=%zu checked=%zu opened=%zu\n", hashes.size(), g.files.size(), res.checked, res.opened);
+        for (const bleach::AnimSource& a : res.found) {
+            std::printf("  found %s [%s] clips=%zu fit=%zu best=%zu/%zu\n", FileStem(a.path).c_str(), a.container.c_str(), a.clips,
+                        a.fit, a.bestMatched, a.bestBones);
+            for (const std::string& e : a.extras) std::printf("    fx %s\n", e.c_str());
+        }
+        for (const auto& r : res.related) std::printf("  related %s [%s]\n", FileStem(r.first).c_str(), r.second.c_str());
+        for (const auto& kv : res.magicCount) std::printf("  magic %s %zu\n", kv.first.c_str(), kv.second);
+        return 0;
+    }
     if (EndsWith(a1, ".lds")) {
         Lds l;
         std::string err;
@@ -106,14 +142,20 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    if (EndsWith(a1, ".tactpkg")) {
+    if (EndsWith(a1, ".tactpkg") || EndsWith(a1, ".tmo") || EndsWith(a1, ".cat") || EndsWith(a1, ".bin")) {
         TactPkg p;
         std::string err;
         if (!LoadTact(a1, p, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
-        std::printf("TACTPKG %s clips=%zu\n", p.name.c_str(), p.clips.size());
+        std::printf("TACTPKG %s container=%s magic=%s clips=%zu\n", p.name.c_str(), p.container.c_str(), SniffMagic(a1).c_str(),
+                    p.clips.size());
         for (const std::string& o : p.other) std::printf("  other %s\n", o.c_str());
-        for (size_t i = 0; i < p.clips.size(); ++i)
-            std::printf("  clip %zu %s frames=%d bones=%d\n", i, p.clips[i].name.c_str(), p.clips[i].frames, p.clips[i].bones);
+        for (const SubEntry& e : p.extras) std::printf("  extra %s %s/%s size=%zu\n", e.type.c_str(), e.where.c_str(), e.name.c_str(), e.size);
+        for (size_t i = 0; i < p.clips.size(); ++i) {
+            std::vector<uint32_t> h;
+            p.ClipBones(i, h);
+            std::printf("  clip %zu %s frames=%d bones=%d hashes=%zu where=%s\n", i, p.clips[i].name.c_str(), p.clips[i].frames,
+                        p.clips[i].bones, h.size(), p.clips[i].where.c_str());
+        }
         if (argc >= 4) {
             const std::string clipName = argv[2];
             std::vector<std::string> files;

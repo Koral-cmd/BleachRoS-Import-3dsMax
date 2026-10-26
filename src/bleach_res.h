@@ -71,3 +71,5 @@
 #define IDC_A_RENAME     1133
 #define IDC_A_SEQGROUP   1134
 #define IDC_A_LOADCHAR   1135
+#define IDC_A_FIND       1136
+#define IDC_A_FITONLY    1137

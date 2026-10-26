@@ -47,6 +47,15 @@ S=$B/samples
   $B/bleachdump $S/pl999_cos00_00.lds
   $B/bleachdump $S/pl999.tactpkg idle_delta $S/pl999_cos00_00.tmd2
   $B/bleachdump $S/pl999.tactpkg pose_abs $S/pl999_cos00_00.tmd2
+  $B/bleachdump $S/pl999.tactpkg
+  $B/bleachdump $S/garganta.cat
+  $B/bleachdump $S/single.tmo
+  $B/bleachdump $S/unknown.bin
+  $B/bleachdump $S/pl997.tactpkg
+  $B/bleachdump $S/garganta.cat raw.tmo $S/pl999_cos00_00.tmd2 | tail -4
+  $B/bleachdump $S/unknown.bin unknown#1 $S/pl999_cos00_00.tmd2 | tail -4
+  $B/bleachdump --find $S $S/pl999_cos00_00.tmd2
+  cp $S/unknown.bin $S/pl999_fx.bin; $B/bleachdump --find $S $S/pl999_cos00_00.tmd2 | grep "pl999_fx\|FIND"; rm -f $S/pl999_fx.bin
 } > $B/out.txt 2>&1 || { cat $B/out.txt; exit 1; }
 if [ "$1" = "--update" ]; then cp $B/out.txt tests/expected.txt; echo "  эталон обновлён"; exit 0; fi
 if cmp -s $B/out.txt tests/expected.txt; then echo "  читатели: вывод совпал с эталоном ($(wc -l < tests/expected.txt) строк)"

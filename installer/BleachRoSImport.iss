@@ -5,7 +5,7 @@
 ;  Собирается из installer\BUILD_RELEASE.bat.
 ; ================================================================
 #ifndef AppVer
-  #define AppVer "1.1.2"
+  #define AppVer "1.2.0"
 #endif
 #define Stage "..\dist\stage"
 

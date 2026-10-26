@@ -42,6 +42,12 @@ ClipMatch MatchClip(const Tmo& clip, const Skeleton& skel, const AnimSettings& s
 void EvaluateClip(const Tmo& clip, const Skeleton& skel, const AnimSettings& s, const ClipMatch& m,
                   std::vector<std::vector<M4>>& poses, std::vector<char>& animated);
 
+// Подходит ли клип к скелету: совпавшие кости покрывают хотя бы треть клипа
+// или треть скелета. Одно правило для загрузки и для поиска.
+inline bool ClipFits(size_t matched, size_t clipBones, size_t skelBones) {
+    return matched > 0 && (matched * 3 >= clipBones || matched * 3 >= skelBones);
+}
+
 double SampleCurve(const std::vector<Key>& k, double f, double def);
 
 std::string DescribeMatch(const Tmo& clip, const ClipMatch& m);
