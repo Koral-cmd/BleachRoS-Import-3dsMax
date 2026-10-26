@@ -22,6 +22,7 @@ struct ImportOptions {
     double unitsPerMeter = 0.0;  // 0 = по системным единицам сцены
     std::string attachBone = "auto";
     bool lods = false;           // импортировать младшие уровни LOD
+    bool restPose = true;        // кости с extra-поворотом (плащ, цепочки) - в позу покоя, как в игре
 };
 
 // Файл для импорта: основной (lod 0) или младший уровень (1, 2...)
@@ -39,6 +40,9 @@ struct AnimOptions {
     bool replace = false;        // удалить уже загруженные клипы перед загрузкой
     bool together = false;       // выбранные клипы - одновременно, одной последовательностью
     std::string mergedName;      // имя такой последовательности ("" = общее начало имён)
+    bool physics = true;         // запечь физику ткани (.cphy) для костей без ключей
+    std::vector<tam::PhysJoint> physJoints;
+    std::vector<tam::PhysLink> physLinks;
 };
 
 struct RigInfo {

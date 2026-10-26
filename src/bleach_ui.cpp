@@ -295,6 +295,7 @@ void LoadOptions(HWND dlg, const Settings& st) {
     Check(dlg, IDC_M_SKIN, st.GetInt("skin", 1) != 0);
     Check(dlg, IDC_M_ALPHA, st.GetInt("alpha", 0) != 0);
     Check(dlg, IDC_M_LODS, st.GetInt("lods", 0) != 0);
+    Check(dlg, IDC_M_REST, st.GetInt("restpose", 1) != 0);
     ComboFill(dlg, IDC_M_BONESTYLE, { "Bone", "Point" }, st.GetInt("bonestyle", 0));
     ComboFill(dlg, IDC_M_UNITS, { TR("Авто"), TR("Метры"), TR("Сантиметры") }, st.GetInt("gameunits", 0));
     ComboFill(dlg, IDC_M_SCALE, { TR("Системные единицы"), TR("1 м = 39.37"), TR("1 м = 100"), TR("1 м = 1") }, st.GetInt("scale", 0));
@@ -314,6 +315,8 @@ ImportOptions ReadOptions(HWND dlg, Settings& st) {
     o.skin = Checked(dlg, IDC_M_SKIN);
     o.alpha = Checked(dlg, IDC_M_ALPHA);
     o.lods = Checked(dlg, IDC_M_LODS);
+    o.restPose = Checked(dlg, IDC_M_REST);
+    st.SetInt("restpose", o.restPose);
     o.boneStyle = std::max(0, ComboSel(dlg, IDC_M_BONESTYLE));
     o.gameUnits = std::max(0, ComboSel(dlg, IDC_M_UNITS));
     const int sc = std::max(0, ComboSel(dlg, IDC_M_SCALE));
@@ -437,6 +440,7 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         SetText(dlg, IDC_M_SKIN, TR("Skin (веса)"));
         SetText(dlg, IDC_M_ALPHA, TR("Альфа -> прозрачность"));
         SetText(dlg, IDC_M_LODS, TR("Импортировать LOD (слои)"));
+        SetText(dlg, IDC_M_REST, TR("Поза покоя из игры (плащ, ленты, цепочки оружия)"));
         SetText(dlg, IDC_M_BONE_LBL, TR("Кости"));
         SetText(dlg, IDC_M_UNITS_LBL, TR("Ед. игры"));
         SetText(dlg, IDC_M_SCALE_LBL, TR("Масштаб"));
@@ -586,6 +590,11 @@ struct AnimState {
     std::vector<std::string> found;
     std::map<std::string, std::string> foundNote;   // путь -> "подходит 12 из 40"
     std::vector<std::string> objectFiles;           // одиночные клипы объекта (.tmo2), играют вместе
+    // физика ткани из .cphy персонажа
+    std::string physFor;
+    std::vector<tam::PhysJoint> physJoints;
+    std::vector<tam::PhysLink> physLinks;
+    size_t physFiles = 0;
 };
 
 // Пункт "все клипы объекта вместе" в списке пакетов (не файл).
@@ -828,6 +837,33 @@ void FillRigs(HWND dlg, AnimState& s) {
     ComboFill(dlg, IDC_A_RIG, names, s.rigs.empty() ? 0 : sel);
 }
 
+// Все .cphy персонажа (pl051_cos01.cphy, pl051_hair00.cphy, pl051_wep01_00.cphy...).
+void LoadPhysics(AnimState& s, const std::string& charId) {
+    if (s.physFor == charId) return;
+    s.physFor = charId;
+    s.physJoints.clear();
+    s.physLinks.clear();
+    s.physFiles = 0;
+    std::string err;
+    if (charId.empty() || !EnsureIndex(s.st, false, err)) return;
+    const std::string id = Lower(charId);
+    std::vector<std::string> files;
+    for (const AnyFile& f : g_index.files)
+        if (f.ext == ".cphy" && Lower(tam::FileStem(f.path)).compare(0, id.size(), id) == 0) files.push_back(f.path);
+    std::sort(files.begin(), files.end());
+    std::set<uint32_t> seen;
+    for (const std::string& p : files) {
+        tam::Cphy c;
+        if (!tam::LoadCphy(p, c, err)) { Log("  %s", err.c_str()); continue; }
+        ++s.physFiles;
+        size_t added = 0;
+        for (const tam::PhysJoint& j : c.joints)
+            if (seen.insert(j.hash).second) { s.physJoints.push_back(j); ++added; }
+        s.physLinks.insert(s.physLinks.end(), c.links.begin(), c.links.end());
+        Log(TR("Физика %s: суставов %zu (новых %zu), связей %zu"), tam::FileStem(p).c_str(), c.joints.size(), added, c.links.size());
+    }
+}
+
 AnimOptions ReadAnimOptions(HWND dlg, Settings& st) {
     AnimOptions o;
     o.mode = std::max(0, ComboSel(dlg, IDC_A_MODE));
@@ -838,6 +874,13 @@ AnimOptions ReadAnimOptions(HWND dlg, Settings& st) {
     o.gap = std::max(1, std::atoi(GetText(dlg, IDC_A_GAP).c_str()));
     o.replace = Checked(dlg, IDC_A_APPEND);
     o.together = Checked(dlg, IDC_A_TOGETHER);
+    o.physics = Checked(dlg, IDC_A_PHYS);
+    st.SetInt("anim_physics", o.physics);
+    if (g_anim && o.physics) {
+        LoadPhysics(*g_anim, CurrentRigChar(dlg, *g_anim));
+        o.physJoints = g_anim->physJoints;
+        o.physLinks = g_anim->physLinks;
+    }
     st.SetInt("anim_mode", o.mode);
     st.SetInt("anim_order", oi);
     st.SetInt("anim_fps", fi);
@@ -1104,6 +1147,7 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         SetText(dlg, IDC_A_GAP_LBL, TR("Пауза"));
         SetText(dlg, IDC_A_APPEND, TR("Сначала удалить загруженные"));
         SetText(dlg, IDC_A_TOGETHER, TR("Одновременно (1 клип)"));
+        SetText(dlg, IDC_A_PHYS, TR("Физика ткани из игры (.cphy): плащ, ленты, рукава, юбка, волосы - запекается в ключи"));
         SetText(dlg, IDC_A_LOAD, TR("Добавить выбранные"));
         SetText(dlg, IDC_A_LOADALL, TR("Все из пакета (фильтр)"));
         SetText(dlg, IDC_A_LOADCHAR, TR("ВСЕ анимации персонажа"));
@@ -1124,6 +1168,7 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         SetText(dlg, IDC_A_GAP, std::to_string(s->st.GetInt("anim_gap", 10)));
         Check(dlg, IDC_A_APPEND, s->st.GetInt("anim_replace", 0) != 0);
         Check(dlg, IDC_A_FITONLY, s->st.GetInt("anim_fitonly", 0) != 0);
+        Check(dlg, IDC_A_PHYS, s->st.GetInt("anim_physics", 1) != 0);
         {
             HWND nc = GetDlgItem(dlg, IDC_A_NAME);
             for (const char* n : kWc3Names) SendMessageW(nc, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(n).c_str()));

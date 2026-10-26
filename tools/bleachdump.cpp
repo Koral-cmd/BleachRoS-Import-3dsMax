@@ -16,6 +16,8 @@
 #include "tam_assemble.h"
 #include "tam_formats.h"
 
+#include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -63,15 +65,35 @@ static int DumpModels(const std::vector<std::string>& files, Skeleton* skelOut) 
     BuildSkeleton(parts, skel, opt, log);
     for (const std::string& l : log) std::printf("%s\n", l.c_str());
     std::printf("SKELETON %zu\n", skel.bones.size());
+    const std::vector<M4> rest = skel.RestWorlds();
     for (size_t i = 0; i < skel.bones.size(); ++i) {
         const SkelBone& b = skel.bones[i];
         std::printf("  S %zu %s parent=%d world_t=(%.5f %.5f %.5f) local_t=(%.5f %.5f %.5f) src=%s\n", i, b.name.c_str(),
                     b.parent, b.bindWorld.m[12], b.bindWorld.m[13], b.bindWorld.m[14], b.bindLocal.m[12],
                     b.bindLocal.m[13], b.bindLocal.m[14], b.source.c_str());
+        if (b.hasRest || MaxAbsDiff(rest[i], b.bindWorld) > 1e-6)
+            std::printf("    rest rot=(%.3f %.3f %.3f) rest_world_t=(%.5f %.5f %.5f) angle_to_bind=%.2f\n", b.restRot[0], b.restRot[1],
+                        b.restRot[2], rest[i].m[12], rest[i].m[13], rest[i].m[14], AngleDeg(rest[i], b.bindWorld));
     }
     for (size_t p = 0; p < parts.size(); ++p) {
         std::vector<PartMesh> meshes;
         BuildMeshes(parts, static_cast<int>(p), skel, opt, meshes);
+        // BLEACH_OBJ=файл: дописать меши в OBJ (игровое пространство) - посмотреть форму без Max
+        if (const char* objPath = std::getenv("BLEACH_OBJ")) {
+            static size_t base = 1;
+            std::FILE* f = std::fopen(objPath, p == 0 ? "w" : "a");
+            if (p == 0) base = 1;
+            if (f != nullptr) {
+                for (const PartMesh& m : meshes) {
+                    std::fprintf(f, "o %s_%s\n", parts[p].tmd->name.c_str(), m.name.c_str());
+                    for (size_t v = 0; v * 3 < m.pos.size(); ++v) std::fprintf(f, "v %f %f %f\n", m.pos[v * 3], m.pos[v * 3 + 1], m.pos[v * 3 + 2]);
+                    for (size_t k = 0; k * 3 < m.faces.size(); ++k)
+                        std::fprintf(f, "f %zu %zu %zu\n", base + m.faces[k * 3], base + m.faces[k * 3 + 1], base + m.faces[k * 3 + 2]);
+                    base += m.pos.size() / 3;
+                }
+                std::fclose(f);
+            }
+        }
         for (const PartMesh& m : meshes) {
             double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 };
             for (size_t v = 0; v * 3 < m.pos.size(); ++v)
@@ -101,6 +123,89 @@ int main(int argc, char** argv) {
         return 1;
     }
     const std::string a1 = argv[1];
+    // --phys model.tmd2 file.cphy [выход_префикс]: проверка физики ткани на синтетическом движении
+    // (корень едет вперёд и останавливается); OBJ кадров 0/10/20/40 со скиннингом.
+    if (a1 == "--phys" && argc >= 4) {
+        Tmd2 t;
+        Cphy c;
+        std::string err;
+        if (!LoadTmd2(argv[2], t, err) || !LoadCphy(argv[3], c, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+        std::printf("CPHY %s joints=%zu links=%zu\n", c.name.c_str(), c.joints.size(), c.links.size());
+        for (size_t i = 0; i < c.joints.size() && i < 3; ++i)
+            std::printf("  joint %u parent %u invMass=%.2f damping=%.2f elasticity=%.3f limit=%.3f grav=%.2f len=%.4f\n", c.joints[i].hash,
+                        c.joints[i].parent, c.joints[i].invMass, c.joints[i].damping, c.joints[i].elasticity, c.joints[i].maxLimit[0],
+                        c.joints[i].gravityScale, c.joints[i].maxLength);
+        std::vector<Part> parts(1);
+        parts[0].tmd = &t;
+        Skeleton skel;
+        BuildOptions opt;
+        std::vector<std::string> log;
+        BuildSkeleton(parts, skel, opt, log);
+        const std::vector<M4> rest = skel.RestWorlds();
+        const int frames = 60;
+        std::vector<std::vector<M4>> poses(frames, rest);
+        std::vector<char> anim(skel.bones.size(), 0);
+        anim[0] = 1;
+        for (int f = 0; f < frames; ++f) {
+            const double dx = (f < 15) ? 0.08 * f : 0.08 * 15;   // рывок вперёд (по +Z) и стоп
+            M4 mv = Ident();
+            mv.m[14] = dx;
+            for (size_t b = 0; b < skel.bones.size(); ++b) poses[static_cast<size_t>(f)][b] = Mul(rest[b], mv);
+        }
+        PhysicsSettings ps;
+        const size_t nd = SimulatePhysics(skel, c.joints, c.links, ps, poses, anim);
+        std::printf("PHYS dynamic=%zu\n", nd);
+        // отклонение концов цепочек от жёсткой позы
+        double maxDev = 0;
+        for (int f : { 0, 10, 20, 40, 59 }) {
+            double dev = 0;
+            for (size_t b = 0; b < skel.bones.size(); ++b) {
+                M4 mv = Ident();
+                mv.m[14] = (f < 15) ? 0.08 * f : 1.2;
+                const M4 rigid = Mul(rest[b], mv);
+                const double dd = std::sqrt(std::pow(rigid.m[12] - poses[static_cast<size_t>(f)][b].m[12], 2) +
+                                            std::pow(rigid.m[13] - poses[static_cast<size_t>(f)][b].m[13], 2) +
+                                            std::pow(rigid.m[14] - poses[static_cast<size_t>(f)][b].m[14], 2));
+                dev = std::max(dev, dd);
+            }
+            maxDev = std::max(maxDev, dev);
+            std::printf("  frame %d max offset from rigid %.4f\n", f, dev);
+        }
+        if (argc >= 5) {
+            std::vector<PartMesh> meshes;
+            BuildMeshes(parts, 0, skel, opt, meshes);
+            for (int f : { 0, 10, 20, 40 }) {
+                const std::string path = std::string(argv[4]) + "_" + std::to_string(f) + ".obj";
+                std::FILE* fo = std::fopen(path.c_str(), "w");
+                if (!fo) continue;
+                size_t base = 1;
+                for (const PartMesh& m : meshes) {
+                    std::fprintf(fo, "o %s\n", m.name.c_str());
+                    for (size_t v = 0; v * 3 < m.pos.size(); ++v) {
+                        double o[3] = { 0, 0, 0 };
+                        double ws = 0;
+                        for (uint32_t k = m.wStart.empty() ? 0 : m.wStart[v]; !m.wStart.empty() && k < m.wStart[v + 1]; ++k) {
+                            const size_t b = static_cast<size_t>(m.wBone[k]);
+                            M4 inv;
+                            Inverse(skel.bones[b].bindWorld, inv);
+                            const M4 sk = Mul(inv, poses[static_cast<size_t>(f)][b]);
+                            double q[3];
+                            TransformPoint(sk, m.pos[v * 3], m.pos[v * 3 + 1], m.pos[v * 3 + 2], q);
+                            for (int a = 0; a < 3; ++a) o[a] += q[a] * m.wValue[k];
+                            ws += m.wValue[k];
+                        }
+                        if (ws < 1e-6) { o[0] = m.pos[v * 3]; o[1] = m.pos[v * 3 + 1]; o[2] = m.pos[v * 3 + 2]; ws = 1; }
+                        std::fprintf(fo, "v %f %f %f\n", o[0] / ws, o[1] / ws, o[2] / ws);
+                    }
+                    for (size_t k = 0; k * 3 < m.faces.size(); ++k)
+                        std::fprintf(fo, "f %zu %zu %zu\n", base + m.faces[k * 3], base + m.faces[k * 3 + 1], base + m.faces[k * 3 + 2]);
+                    base += m.pos.size() / 3;
+                }
+                std::fclose(fo);
+            }
+        }
+        return 0;
+    }
     if (a1 == "--find" && argc >= 4) {
         std::vector<std::string> files;
         for (int i = 3; i < argc; ++i) files.push_back(argv[i]);

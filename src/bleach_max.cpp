@@ -265,7 +265,7 @@ bool ReadRig(ULONG handle, SceneRig& rig, std::string& err) {
     rig.charId = GetProp(rig.root, "bleach_char");
     std::vector<INode*> all;
     Collect(rig.root, all, 0);
-    struct B { int idx; uint32_t hash; int parent; tam::M4 bind; INode* node; };
+    struct B { int idx; uint32_t hash; int parent; tam::M4 bind; INode* node; bool hasRest = false; double rest[3] = { 0, 0, 0 }; };
     std::vector<B> bones;
     for (INode* n : all) {
         const std::string si = GetProp(n, "bleach_index");
@@ -281,6 +281,11 @@ bool ReadRig(ULONG handle, SceneRig& rig, std::string& err) {
         b.parent = static_cast<int>(par);
         for (int k = 0; k < 16; ++k) b.bind.m[k] = m[static_cast<size_t>(k)];
         b.node = n;
+        const std::vector<double> rr = ParseList(GetProp(n, "bleach_rest"));
+        if (rr.size() == 3) {
+            b.hasRest = true;
+            for (int k = 0; k < 3; ++k) b.rest[k] = rr[static_cast<size_t>(k)];
+        }
         bones.push_back(b);
     }
     std::sort(bones.begin(), bones.end(), [](const B& a, const B& b) { return a.idx < b.idx; });
@@ -290,7 +295,9 @@ bool ReadRig(ULONG handle, SceneRig& rig, std::string& err) {
     rig.nodes.clear();
     for (const B& b : bones) {
         const auto it = remap.find(b.parent);
-        rig.skel.Add(b.hash, FromMax(b.node->GetName()), it == remap.end() ? -1 : it->second, b.bind, "", "");
+        const int bi = rig.skel.Add(b.hash, FromMax(b.node->GetName()), it == remap.end() ? -1 : it->second, b.bind, "", "");
+        rig.skel.bones[static_cast<size_t>(bi)].hasRest = b.hasRest;
+        for (int k = 0; k < 3; ++k) rig.skel.bones[static_cast<size_t>(bi)].restRot[k] = b.rest[k];
         rig.nodes.push_back(b.node);
     }
     rig.skel.Finalize();
@@ -415,6 +422,8 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
             for (int k = 0; k < 16; ++k) bind += (k ? ";" : "") + Num(b.bindWorld.m[k]);
             SetProp(n, "bleach_bind", bind);
             SetProp(n, "bleach_source", b.source);
+            if (o.restPose && b.hasRest)
+                SetProp(n, "bleach_rest", Num(b.restRot[0]) + ";" + Num(b.restRot[1]) + ";" + Num(b.restRot[2]));
             boneNodes[i] = n;
             mainLayer.push_back(n->GetHandle());
         }
@@ -602,6 +611,26 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         }
     }
 
+    // ---- поза покоя: кости с extra-поворотом (плащ, ленты, цепочки оружия) ----
+    // Skin уже запомнил bind; теперь ставим кости так, как их ставит игра.
+    if (o.restPose) {
+        size_t nRest = 0;
+        double maxRot = 0.0;
+        for (const tam::SkelBone& b : skel.bones)
+            if (b.hasRest) {
+                ++nRest;
+                for (double v : b.restRot) maxRot = std::max(maxRot, std::fabs(v));
+            }
+        if (nRest > 0) {
+            const std::vector<tam::M4> rest = skel.RestWorlds();
+            RedrawOff ro(ip);
+            for (int i : skel.TopoOrder())
+                if (boneNodes[static_cast<size_t>(i)] != nullptr)
+                    SetWorld(boneNodes[static_cast<size_t>(i)], GameToMax(rest[static_cast<size_t>(i)], S));
+        }
+        Log(TR("Поза покоя: костей с extra-поворотом %zu (наибольший угол %.3f рад)"), nRest, maxRot);
+    }
+
     // ---- вид костей, материалы, слои (MAXScript одним куском) ----
     std::wstring sk = L"(\n" + boneScript + L")\n";
     if (!RunScript(sk)) Log(TR("[!] скрипт вида костей не выполнился"));
@@ -716,11 +745,8 @@ tam::M4 MaxLocal(const SceneRig& rig, const std::vector<tam::M4>& pose, size_t b
     return tam::Mul(w, inv);
 }
 
-std::vector<tam::M4> BindPose(const SceneRig& rig) {
-    std::vector<tam::M4> pose(rig.skel.bones.size());
-    for (size_t i = 0; i < pose.size(); ++i) pose[i] = rig.skel.bones[i].bindWorld;
-    return pose;
-}
+// Поза "кадра 0": bind, а кости с extra-поворотом - в позе покоя (как в игре).
+std::vector<tam::M4> BindPose(const SceneRig& rig) { return rig.skel.RestWorlds(); }
 
 // ------------------------------------------------------------
 //  Загруженные клипы = последовательности
@@ -1071,6 +1097,11 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
         Ready r;
         r.name = clip.name;
         tam::EvaluateClip(clip, rig.skel, as, m, r.poses, r.anim);
+        if (o.physics && !o.physJoints.empty()) {
+            tam::PhysicsSettings ps;
+            const size_t nd = tam::SimulatePhysics(rig.skel, o.physJoints, o.physLinks, ps, r.poses, r.anim);
+            if (nd > 0) Log(TR("    физика ткани: костей %zu"), nd);
+        }
         for (const auto& pr : m.matched)
             for (int k = 6; k < 9; ++k)
                 for (const tam::Key& key : clip.curves[static_cast<size_t>(pr.first) * 9 + static_cast<size_t>(k)])

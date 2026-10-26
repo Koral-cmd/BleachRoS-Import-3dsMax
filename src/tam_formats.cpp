@@ -238,7 +238,7 @@ void Tmd2::Read(const std::vector<uint8_t>& d) {
         tblCount = r.At<uint32_t>(176);
         tblIdxCount = r.At<uint32_t>(180);
         boneCount = r.At<uint32_t>(184);
-        extraOfs = r.At<uint32_t>(196);
+        extraOfs = r.At<uint32_t>(192);   // @196 - второе смещение иерархии
     }
     if (modelCount > 100000 || materialCount > 100000 || partCount > 1000000 || texCount > 100000 ||
         boneCount > 100000 || vertexCount > 50000000 || triCountTotal > 50000000)
@@ -902,6 +902,107 @@ bool LoadTact(const std::string& path, TactPkg& out, std::string& err) {
         return true;
     } catch (const std::exception& e) {
         err = out.name + ": " + e.what();
+        return false;
+    }
+}
+
+// ============================================================
+//  CPHY
+// ============================================================
+void Cphy::Read(const std::vector<uint8_t>& d) {
+    joints.clear();
+    links.clear();
+    Rd r(d.data(), d.size());
+    if (r.Fixed(0, 4) != "CPHY") throw TamError(TR("не CPHY"));
+    const uint32_t n = r.At<uint32_t>(8, "CPHY"), nl = r.At<uint32_t>(12, "CPHY");
+    if (n == 0) return;
+    if (n > 100000 || nl > 1000000) throw TamError(TR("CPHY: неверное число суставов"));
+    // начало таблицы суставов: схема перед ней разной длины, поэтому ищем место,
+    // где n записей по 100 байт ссылаются только друг на друга
+    const uint64_t stride = 100;
+    uint64_t start = 0;
+    for (uint64_t q = 0x20; q + stride * n <= d.size() && q < 0x10000; q += 4) {
+        std::vector<uint32_t> js(n);
+        bool ok = true;
+        for (uint32_t k = 0; k < n && ok; ++k) {
+            js[k] = r.At<uint32_t>(q + 4 + stride * k);
+            if (js[k] == 0) ok = false;
+        }
+        if (!ok) continue;
+        std::vector<uint32_t> sorted = js;
+        std::sort(sorted.begin(), sorted.end());
+        if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end()) continue;
+        for (uint32_t k = 0; k < n && ok; ++k) {
+            const uint32_t p = r.At<uint32_t>(q + stride * k);
+            if (p != 0 && !std::binary_search(sorted.begin(), sorted.end(), p)) ok = false;
+        }
+        const float m = r.At<float>(q + 8);
+        if (ok && m >= 0.0f && m <= 1000.0f) { start = q; break; }
+    }
+    if (start == 0) throw TamError(TR("CPHY: таблица суставов не найдена"));
+    for (uint32_t k = 0; k < n; ++k) {
+        const uint64_t o = start + stride * k;
+        PhysJoint j;
+        j.parent = r.At<uint32_t>(o);
+        j.hash = r.At<uint32_t>(o + 4);
+        const uint64_t p = o + 8;
+        j.invMass = r.At<float>(p);
+        j.damping = r.At<float>(p + 4);
+        j.elasticity = r.At<float>(p + 8);
+        for (int a = 0; a < 3; ++a) {
+            j.minLimit[a] = r.At<float>(p + 12 + 4ull * a);
+            j.maxLimit[a] = r.At<float>(p + 24 + 4ull * a);
+        }
+        j.translateInert = r.At<float>(p + 36);
+        j.rotateInert = r.At<float>(p + 40);
+        j.windScale = r.At<float>(p + 44);
+        j.gravityScale = r.At<float>(p + 48);
+        j.animBlendRate = r.At<float>(p + 52);
+        j.frameRotateLimit = r.At<float>(p + 56);
+        j.minLength = r.At<float>(p + 60);
+        j.maxLength = r.At<float>(p + 64);
+        j.isDummy = r.At<uint8_t>(p + 75);
+        j.radius = r.At<float>(o + 88 + 8);
+        joints.push_back(j);
+    }
+    // связи между соседними цепочками (ткань): две ссылки на суставы + длины
+    if (nl > 0) {
+        std::vector<uint32_t> sorted;
+        for (const PhysJoint& j : joints) sorted.push_back(j.hash);
+        std::sort(sorted.begin(), sorted.end());
+        const uint64_t e = start + stride * n;
+        for (uint64_t q = e; q + 48ull * nl <= d.size() && q < e + 0x4000; q += 4) {
+            bool ok = true;
+            for (uint32_t k = 0; k < nl && ok; ++k) {
+                const uint32_t a = r.At<uint32_t>(q + 48ull * k), b = r.At<uint32_t>(q + 48ull * k + 4);
+                const float mx = r.At<float>(q + 48ull * k + 8), mn = r.At<float>(q + 48ull * k + 12);
+                ok = std::binary_search(sorted.begin(), sorted.end(), a) && std::binary_search(sorted.begin(), sorted.end(), b) &&
+                     mn > 0.0f && mx >= mn && mx < 1000.0f;
+            }
+            if (!ok) continue;
+            for (uint32_t k = 0; k < nl; ++k) {
+                PhysLink l;
+                l.a = r.At<uint32_t>(q + 48ull * k);
+                l.b = r.At<uint32_t>(q + 48ull * k + 4);
+                l.maxLength = r.At<float>(q + 48ull * k + 8);
+                l.minLength = r.At<float>(q + 48ull * k + 12);
+                links.push_back(l);
+            }
+            break;
+        }
+    }
+}
+
+bool LoadCphy(const std::string& path, Cphy& out, std::string& err) {
+    std::vector<uint8_t> d;
+    if (!ReadAll(path, d, err)) return false;
+    try {
+        out = Cphy();
+        out.name = FileStem(path);
+        out.Read(d);
+        return true;
+    } catch (const std::exception& e) {
+        err = FileStem(path) + ": " + e.what();
         return false;
     }
 }

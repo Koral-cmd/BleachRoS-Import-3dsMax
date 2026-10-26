@@ -64,6 +64,21 @@ u32 смещение заголовков (от @16); записи (u64 смещ
 Трактовка значений (дельта от bind или абсолютные) на реальных данных ещё
 проверяется — в плагине есть авто-выбор и ручной переключатель.
 
+## CPHY (`.cphy`, физика костей)
+`CPHY`, u32 версия (10004), u32 суставов, u32 связей, ...; дальше текстовая схема
+полей, затем суставы по 100 байт: u32 parentHash (0 = корень цепочки), u32
+jointHash, 80 байт параметров (invMass, damping, elasticity, minLimitAngle[3],
+maxLimitAngle[3], translateInert, rotateInert, windScale, gravityScale,
+animBlendRate, frameRotateLimit, minLength, maxLength, noiseInfluence,
+limitRotation, isDummy, rotateTargetHash), 12 байт столкновения (mask, type,
+radius). Потом связи между цепочками по 48 байт (jointHash, jointHash,
+maxLength, minLength, пределы углов...). Файлы: `plNNN_cosXX.cphy`,
+`plNNN_hairXX.cphy`, `plNNN_wepXX_YY.cphy`.
+
+## Поза покоя
+Таблица extra @192 заголовка (i16 на кость, -1 = нет), за ней float[3] поворотов
+(эйлер XYZ). Кость ставится с поворотом inverse(offset) от bind (как в BlenderTMD2).
+
 ## Папки
 `00HIGH\Model\chara\` (`01MIDDLE`, `02LOW` — уровни LOD),
 `plNNN_cosXX_YY` тело, `plNNN_faceXX_YY` лицо, `plNNN_hairXX_YY` волосы,

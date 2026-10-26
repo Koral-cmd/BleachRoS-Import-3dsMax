@@ -31,6 +31,12 @@ struct SkelBone {
     // не меняется; bind незанятой общей кости берёт следующая часть, которая её
     // реально использует (оружие, плащ - в файле тела эти кости стоят как попало).
     bool owned = false;
+    // Поза покоя: у костей с записью extra в .tmd2 есть поворот offset (эйлер XYZ).
+    // Игра (и BlenderTMD2) ставит такую кость с поворотом inverse(offset) от bind -
+    // так висят плащ, ленты, цепочки оружия. restLocal = R^-1 * bindLocal.
+    bool hasRest = false;
+    double restRot[3] = { 0, 0, 0 };
+    M4 restLocal{};
 };
 
 struct Skeleton {
@@ -39,7 +45,8 @@ struct Skeleton {
 
     int Add(uint32_t hash, const std::string& name, int parent, const M4& world, const std::string& src,
             const std::string& kind, const M4& attach = Ident());
-    void Finalize();                         // посчитать bindLocal
+    void Finalize();                         // посчитать bindLocal и restLocal
+    std::vector<M4> RestWorlds() const;      // мировые матрицы позы покоя
     std::vector<int> TopoOrder() const;      // родители раньше детей
     int FindByName(const std::string& name) const;
     int GuessAttachBone() const;             // кость для оружия

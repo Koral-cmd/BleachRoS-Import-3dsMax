@@ -15,6 +15,10 @@ A C++ plugin (`.dlu`) for 3ds Max that reads **BLEACH Rebirth of Souls** files
   animations of a character. Clips that don't fit the skeleton are rejected.
   Object animations made of several parts (e.g. `adv_object\garganta_*.tmo2`)
   are loaded at the same time as one sequence.
+- **Cloth physics** from the game's `.cphy` files (cloak, ribbons, sleeves, skirt, hair):
+  these bones have no keys in the clips, the game simulates them. The plugin runs the same
+  kind of simulation (inertia, damping, gravity, elasticity, angle limits, chain links)
+  and bakes it into linear keys.
 - **Search by bones** through the whole game folder for animations that fit
   the selected skeleton.
 - **WhiteoutDex**: loaded clips appear as Sequences (Sequence Manager / MDX export

@@ -10,7 +10,7 @@ macroScript BleachImport_Open
 (
     on execute do
     (
-        local sExpected = "1.3.1"
+        local sExpected = "1.4.0"
         local o = undefined
         try (if (BleachCpp != undefined) do o = BleachCpp) catch (o = undefined)
         if (o == undefined) do

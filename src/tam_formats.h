@@ -182,11 +182,45 @@ struct TactPkg {
     bool ClipBones(size_t i, std::vector<uint32_t>& hashes) const;   // только хеши костей (быстро)
 };
 
+// ------------------------------------------------------------
+// .cphy - физика костей (плащ, ленты, рукава, юбки, волосы). Игра двигает
+// эти кости симуляцией, ключей в клипах у них нет.
+//   'CPHY' u32 версия(10004) u32 суставов u32 связей u32 ...; схема полей
+//   текстом, затем суставы по 100 байт:
+//   u32 parentHash, u32 jointHash, 80 байт параметров (invMass, damping,
+//   elasticity, min/maxLimitAngle[3], translateInert, rotateInert, windScale,
+//   gravityScale, animBlendRate, frameRotateLimit, minLength, maxLength,
+//   noiseInfluence, limitRotation, isDummy, rotateTargetHash), 12 байт
+//   столкновения (mask, type, radius); затем связи между цепочками по 48 байт
+//   (jointHash, jointHash, maxLength, minLength, ...).
+struct PhysJoint {
+    uint32_t hash = 0, parent = 0;
+    float invMass = 1.0f, damping = 0.2f, elasticity = 0.05f;
+    float minLimit[3] = { -0.5f, -0.5f, -0.5f }, maxLimit[3] = { 0.5f, 0.5f, 0.5f };
+    float translateInert = 1.0f, rotateInert = 1.0f, windScale = 0.0f, gravityScale = 1.0f;
+    float animBlendRate = 0.0f, frameRotateLimit = 3.1416f, minLength = 0.0f, maxLength = 0.0f;
+    uint8_t isDummy = 0;
+    float radius = 0.0f;
+};
+
+struct PhysLink {
+    uint32_t a = 0, b = 0;
+    float maxLength = 0.0f, minLength = 0.0f;
+};
+
+struct Cphy {
+    std::string name;
+    std::vector<PhysJoint> joints;
+    std::vector<PhysLink> links;
+    void Read(const std::vector<uint8_t>& d);
+};
+
 // Загрузчики (путь UTF-8). false + err при ошибке.
 bool LoadTmd2(const std::string& path, Tmd2& out, std::string& err);
 bool LoadLds(const std::string& path, Lds& out, std::string& err);
 bool LoadTact(const std::string& path, TactPkg& out, std::string& err);
 bool LoadTmo(const std::string& path, Tmo& out, std::string& err);
+bool LoadCphy(const std::string& path, Cphy& out, std::string& err);
 // Несколько файлов как один пакет (name - имя пакета). Нечитаемые пропускаются (err - что именно).
 bool LoadTactMany(const std::vector<std::string>& paths, const std::string& name, TactPkg& out, std::string& err);
 

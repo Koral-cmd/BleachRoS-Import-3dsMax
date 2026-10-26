@@ -36,6 +36,7 @@
 #define IDC_M_ANIMS      1030
 #define IDC_M_LODS       1031
 #define IDC_M_LANG       1032
+#define IDC_M_REST       1033
 
 #define IDC_A_RIG_LBL    1101
 #define IDC_A_RIG        1102
@@ -75,3 +76,4 @@
 #define IDC_A_FIND       1136
 #define IDC_A_FITONLY    1137
 #define IDC_A_TOGETHER   1138
+#define IDC_A_PHYS       1139

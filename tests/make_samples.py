@@ -79,11 +79,16 @@ def make_tmd2(name, bones, verts, tris, models, materials, textures, tables, fla
         ecount=len(entries)//2-estart
         modelb+=struct.pack("<6f",*([0]*6))+struct.pack("<HBB",ecount,1,4)+struct.pack("<IiII",estart,addname(mname),tcrc(mname),0)
     # bones
-    hier=b""; mats=b""; extra=b""
-    for (bn, par, w) in bones:
+    hier=b""; mats=b""; extra=b""; extraf=b""; ne=0
+    for bone in bones:
+        (bn, par, w) = bone[:3]
         hier+=struct.pack("<I3fiHH",tcrc(bn),w[12],w[13],w[14],par,0,addname(bn))
         mats+=rows_from(inv_affine(w))
-        extra+=struct.pack("<h",-1)
+        if len(bone) > 3:   # extra: поворот позы покоя (эйлер XYZ)
+            extra+=struct.pack("<h",ne); extraf+=struct.pack("<3f",*bone[3]); ne+=1
+        else:
+            extra+=struct.pack("<h",-1)
+    extra=align(extra)+extraf
     tblidx=b""; tblb=b""; allidx=[]
     for t in tables:
         tblb+=struct.pack("<II",len(t),len(allidx)); allidx+=t
@@ -156,6 +161,22 @@ open(os.path.join(out,"pl996_cos00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("
 cb=[("weapon_R",-1,trans(0.5,1.2,0)),("chain_A",0,trans(1.5,1.2,0))]
 cv=[V((0.5,1.2,0),(1,0,0),(0,0),[255],[0]),V((1.5,1.2,0),(1,0,0),(1,0),[255],[1]),V((1.5,1.3,0),(1,0,0),(0,1),[255],[1])]
 open(os.path.join(out,"pl996_wep00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl996_wep00_00",cb,cv,[(0,1,2)],[("blade",[(0,None,0,1)])],[("BSS1",[0],[1.0])],1,[],wflags)))
+
+# ---------- плащ: кость с extra-поворотом позы покоя ----------
+bones4=bones+[("cape_A",1,trans(0,1,-0.1)),("cape_B",3,trans(0,0.5,-0.1),(0.0,0.0,0.5))]
+open(os.path.join(out,"pl995_cos00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl995_cos00_00",bones4,verts,tris,models,mats,2,tables,flags)))
+
+# ---------- физика ткани (.cphy): cape_A (корень цепочки) -> cape_B ----------
+def cphy(joints, links=()):
+    out=b"CPHY"+struct.pack("<IIIII",10004,len(joints),len(links),0,2)
+    out=out.ljust(872,b"\x00")   # схема полей (здесь пустая) - читатель ищет таблицу сам
+    for (par, j, length) in joints:
+        prm=struct.pack("<18f4BI",1.0,0.2,0.06,-0.52,-0.52,-0.52,0.52,0.52,0.52,0.98,0.98,0.2,1.0,0.0,3.1416,length,length,0.0,0,0,0,0,0)
+        out+=struct.pack("<II",tcrc(par) if par else 0,tcrc(j))+prm+struct.pack("<IIf",1,0,0.02)
+    for (a,b,mx,mn) in links:
+        out+=struct.pack("<IIff",tcrc(a),tcrc(b),mx,mn)+b"\x00"*32
+    return out
+open(os.path.join(out,"pl995_cos00.cphy"),"wb").write(cphy([(None,"cape_A",1.0),("cape_A","cape_B",0.5)]))
 
 # ---------- LDS with 2 DDS ----------
 def dds(fourcc, w=4, h=4):

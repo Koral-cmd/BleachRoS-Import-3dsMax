@@ -24,6 +24,7 @@ struct AnimSettings {
     AnimMode mode = AnimMode::Auto;
     char order[4] = "XYZ";
     double locScale = 1.0;      // доп. множитель позиций
+    bool restPose = true;       // кости вне клипа - в позе покоя (extra offset), а не в bind
 };
 
 struct ClipMatch {
@@ -53,6 +54,19 @@ inline bool ClipFits(size_t matched, size_t clipBones, size_t skelBones) {
 Tmo MergeClips(const std::vector<Tmo>& clips, const std::string& name);
 // Общее имя: "garganta_line" + "garganta_outer" -> "garganta".
 std::string CommonClipName(const std::vector<std::string>& names);
+
+// Физика ткани по .cphy: кости-суставы, которых нет в клипе (плащ, ленты,
+// рукава, юбка), запекаются в позы poses: инерция, затухание, гравитация,
+// упругость к позе покоя, предел угла, длины связей. Корни цепочек идут за
+// анимацией. animated[] у затронутых костей становится 1.
+struct PhysicsSettings {
+    double fps = 30.0;          // кадров клипа в секунду
+    int substeps = 2;           // шагов симуляции на кадр (игра - 60 Гц)
+    int warmup = 30;            // шагов "успокоения" на первой позе
+    double gravity = 9.8;       // в единицах игры (метры) / с^2
+};
+size_t SimulatePhysics(const Skeleton& skel, const std::vector<PhysJoint>& joints, const std::vector<PhysLink>& links,
+                       const PhysicsSettings& ps, std::vector<std::vector<M4>>& poses, std::vector<char>& animated);
 
 double SampleCurve(const std::vector<Key>& k, double f, double def);
 

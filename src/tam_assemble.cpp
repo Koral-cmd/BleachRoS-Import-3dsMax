@@ -66,6 +66,15 @@ int Skeleton::Add(uint32_t hash, const std::string& name, int parent, const M4& 
     return i;
 }
 
+static M4 RestRotation(const double r[3]) {
+    // inverse(Euler XYZ) = транспонированный поворот
+    const M4 e = Euler(r[0], r[1], r[2], "XYZ");
+    M4 t = Ident();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) t.m[i * 4 + j] = e.m[j * 4 + i];
+    return t;
+}
+
 void Skeleton::Finalize() {
     for (SkelBone& b : bones) {
         if (b.parent >= 0) {
@@ -75,7 +84,17 @@ void Skeleton::Finalize() {
         } else {
             b.bindLocal = b.bindWorld;
         }
+        b.restLocal = b.hasRest ? Mul(RestRotation(b.restRot), b.bindLocal) : b.bindLocal;
     }
+}
+
+std::vector<M4> Skeleton::RestWorlds() const {
+    std::vector<M4> w(bones.size(), Ident());
+    for (int i : TopoOrder()) {
+        const SkelBone& b = bones[static_cast<size_t>(i)];
+        w[static_cast<size_t>(i)] = (b.parent >= 0) ? Mul(b.restLocal, w[static_cast<size_t>(b.parent)]) : b.restLocal;
+    }
+    return w;
 }
 
 std::vector<int> Skeleton::TopoOrder() const {
@@ -222,6 +241,10 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                     sb.bindWorld = nw;
                     sb.attach = c;
                     sb.source = t.name;
+                    if (t.bones[i].extra >= 0) {
+                        sb.hasRest = true;
+                        for (int a = 0; a < 3; ++a) sb.restRot[a] = t.bones[i].offset[a];
+                    }
                     p.boneCorr[i] = c;
                 } else {
                     M4 inv;
@@ -273,6 +296,11 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
             const auto it = skel.byHash.find(b.hash);
             if (it != skel.byHash.end()) {
                 p.boneMap[i] = it->second;
+                SkelBone& sb = skel.bones[static_cast<size_t>(it->second)];
+                if (!sb.hasRest && b.extra >= 0) {
+                    sb.hasRest = true;
+                    for (int a = 0; a < 3; ++a) sb.restRot[a] = b.offset[a];
+                }
                 return;
             }
             if (!hasCorr[i]) {
@@ -283,6 +311,11 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
             const M4 w = Mul(worlds[i], p.boneCorr[i]);
             const std::string name = b.name.empty() ? std::to_string(b.hash) : b.name;
             p.boneMap[i] = skel.Add(b.hash, name, parent, w, t.name, p.kind, p.boneCorr[i]);
+            if (b.extra >= 0) {
+                SkelBone& nb = skel.bones[static_cast<size_t>(p.boneMap[i])];
+                nb.hasRest = true;
+                for (int a = 0; a < 3; ++a) nb.restRot[a] = b.offset[a];
+            }
         };
         for (size_t i = 0; i < n; ++i) addBone(i, 0);
         for (size_t i = 0; i < n; ++i)
