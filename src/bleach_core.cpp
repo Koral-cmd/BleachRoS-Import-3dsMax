@@ -421,6 +421,11 @@ std::string CharacterName(const std::string& id) {
         { "pl031", "Kaien Shiba" }, { "pl032", "Shinji Hirako" }, { "pl033", "Coyote Starrk" },
         { "pl035", "Tier Harribel" }, { "pl036", "Ulquiorra Cifer" }, { "pl037", "Nnoitra Gilga" },
         { "pl038", "Grimmjow Jaegerjaquez" }, { "pl039", "Szayelaporro Granz" }, { "pl042", "Nelliel Tu Odelschwanck" },
+        // DLC (Season Pass)
+        { "pl050", "Ichibe Hyosube (DLC)" }, { "pl051", "Ichigo Kurosaki TYBW (DLC)" }, { "pl052", "Yhwach (DLC)" },
+        // персонажи поддержки
+        { "sp000", "Zangetsu (dark, support)" }, { "sp001", "Nemu Kurotsuchi (support)" }, { "sp002", "Yachiru Kusajishi (support)" },
+        { "sp003", "Lilynette Gingerbuck (support)" }, { "sp004", "Hachigen Ushoda (support)" }, { "sp005", "Marechiyo Omaeda (support)" },
     };
     const auto it = n.find(Lower(id));
     return it == n.end() ? std::string() : it->second;
