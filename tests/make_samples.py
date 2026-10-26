@@ -149,6 +149,14 @@ open(os.path.join(out,"pl999_wep00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("
 bones2=bones+[("weapon_R",1,trans(0.5,1.2,0))]
 open(os.path.join(out,"pl998_cos00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl998_cos00_00",bones2,verts,tris,models,mats,2,tables,flags)))
 
+# ---------- тело с цепочкой оружия, на которую тело вершин не вешает (кость стоит "как попало") ----------
+bones3=bones+[("weapon_R",1,trans(0.5,1.2,0)),("chain_A",3,trans(0.5,1.2,1))]
+open(os.path.join(out,"pl996_cos00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl996_cos00_00",bones3,verts,tris,models,mats,2,tables,flags)))
+# оружие: та же цепочка, но chain_A в файле стоит по X - это и есть настоящая форма оружия
+cb=[("weapon_R",-1,trans(0.5,1.2,0)),("chain_A",0,trans(1.5,1.2,0))]
+cv=[V((0.5,1.2,0),(1,0,0),(0,0),[255],[0]),V((1.5,1.2,0),(1,0,0),(1,0),[255],[1]),V((1.5,1.3,0),(1,0,0),(0,1),[255],[1])]
+open(os.path.join(out,"pl996_wep00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl996_wep00_00",cb,cv,[(0,1,2)],[("blade",[(0,None,0,1)])],[("BSS1",[0],[1.0])],1,[],wflags)))
+
 # ---------- LDS with 2 DDS ----------
 def dds(fourcc, w=4, h=4):
     hd=bytearray(128); hd[0:4]=b"DDS "; struct.pack_into("<I",hd,4,124); struct.pack_into("<II",hd,12,h,w)

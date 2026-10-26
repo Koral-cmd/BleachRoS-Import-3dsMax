@@ -153,26 +153,90 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                 log.push_back(Format(TR("  [!] %s: вырожденная bind-матрица у кости %s"), t.name.c_str(), t.bones[i].name.c_str()));
         }
 
-        // ---- переход части на скелет по общим костям ----
+        // ---- какие кости файла реально держат вершины ----
         const size_t n = t.bones.size();
+        std::vector<char> used(n, 0);
+        {
+            std::vector<int> seen(t.vertexCount, -2);
+            std::vector<std::pair<int, float>> w;
+            for (const Tmd2Model& m : t.models)
+                for (const Tmd2Part& sp : m.parts)
+                    for (uint64_t tri = sp.start; tri < static_cast<uint64_t>(sp.start) + sp.triCount; ++tri)
+                        for (int c = 0; c < 3; ++c) {
+                            const uint64_t ii = 3ull * tri + static_cast<uint64_t>(c);
+                            if (ii >= t.idx.size()) continue;
+                            const uint32_t v = t.idx[ii];
+                            if (v >= t.vertexCount || seen[v] == sp.table) continue;
+                            seen[v] = sp.table;
+                            t.Weights(v, sp.table, w);
+                            for (const auto& x : w)
+                                if (x.first >= 0 && static_cast<size_t>(x.first) < n && x.second > 0.0f) used[static_cast<size_t>(x.first)] = 1;
+                        }
+        }
+
+        // ---- переход части на скелет по общим костям ----
+        // Переход берётся только у "занятых" костей скелета (на них висят вершины
+        // прошлых частей). Незанятую общую кость часть переставляет по себе:
+        // её bind = как в этом файле, сдвинутый переходом ближайшего занятого предка.
         p.boneCorr.assign(n, Ident());
         std::vector<char> hasCorr(n, 0);
-        size_t shared = 0;
-        int anchor = -1, anchorDepth = 1 << 30;        // общая кость ближе всех к корню
+        std::vector<int> sharedIdx(n, -1);
+        size_t shared = 0, rebound = 0;
+        int anchor = -1, anchorDepth = 1 << 30;        // общая кость с переходом ближе всех к корню
+        auto depthOf = [&](size_t i) {
+            int d = 0;
+            for (int k = t.bones[i].parent; k >= 0 && d < 4096; k = t.bones[static_cast<size_t>(k)].parent) ++d;
+            return d;
+        };
         for (size_t i = 0; i < n; ++i) {
             const auto it = skel.byHash.find(t.bones[i].hash);
             if (it == skel.byHash.end()) continue;
+            sharedIdx[i] = it->second;
+            ++shared;
             const SkelBone& sb = skel.bones[static_cast<size_t>(it->second)];
+            if (!sb.owned) continue;
             M4 inv;
             Inverse(worlds[i], inv);
             p.boneCorr[i] = Mul(inv, sb.bindWorld);     // part -> skeleton
             hasCorr[i] = 1;
             p.corrMax = std::max(p.corrMax, MaxAbsDiff(p.boneCorr[i], Ident()));
-            ++shared;
-            int d = 0;
-            for (int k = t.bones[i].parent; k >= 0 && d < 4096; k = t.bones[static_cast<size_t>(k)].parent) ++d;
+            const int d = depthOf(i);
             if (d < anchorDepth) { anchorDepth = d; anchor = static_cast<int>(i); }
         }
+        // общие, но никем не занятые кости: если у кости в файле есть предок с
+        // известным переходом - bind берётся из этого файла (форма цепочки как в
+        // файле части). Иначе - как раньше: кость остаётся, часть подстраивается.
+        if (shared > 0) {
+            std::vector<size_t> order(n);
+            for (size_t i = 0; i < n; ++i) order[i] = i;
+            std::stable_sort(order.begin(), order.end(), [&](size_t x, size_t y) { return depthOf(x) < depthOf(y); });
+            for (size_t i : order) {
+                if (sharedIdx[i] < 0 || hasCorr[i]) continue;
+                SkelBone& sb = skel.bones[static_cast<size_t>(sharedIdx[i])];
+                int k = t.bones[i].parent;
+                while (k >= 0 && !hasCorr[static_cast<size_t>(k)]) k = t.bones[static_cast<size_t>(k)].parent;
+                if (k >= 0) {
+                    const M4 c = p.boneCorr[static_cast<size_t>(k)];
+                    const M4 nw = Mul(worlds[i], c);
+                    if (MaxAbsDiff(nw, sb.bindWorld) > 1e-4) ++rebound;
+                    sb.bindWorld = nw;
+                    sb.attach = c;
+                    sb.source = t.name;
+                    p.boneCorr[i] = c;
+                } else {
+                    M4 inv;
+                    Inverse(worlds[i], inv);
+                    p.boneCorr[i] = Mul(inv, sb.bindWorld);
+                    p.corrMax = std::max(p.corrMax, MaxAbsDiff(p.boneCorr[i], Ident()));
+                }
+                hasCorr[i] = 1;
+                const int d = depthOf(i);
+                if (d < anchorDepth) { anchorDepth = d; anchor = static_cast<int>(i); }
+            }
+        }
+        if (rebound > 0)
+            log.push_back(Format(TR("  %s: %zu общих костей не заняты другими частями - их bind взят из этого файла"), t.name.c_str(),
+                                 rebound));
         if (shared && p.corrMax > 1e-3)
             log.push_back(Format(TR("  %s: общие кости (%zu) стоят в файле иначе, чем на скелете (до %.3f) -> часть перенесена на скелет"),
                                  t.name.c_str(), shared, p.corrMax));
@@ -221,6 +285,8 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
             p.boneMap[i] = skel.Add(b.hash, name, parent, w, t.name, p.kind, p.boneCorr[i]);
         };
         for (size_t i = 0; i < n; ++i) addBone(i, 0);
+        for (size_t i = 0; i < n; ++i)
+            if (used[i] && p.boneMap[i] >= 0) skel.bones[static_cast<size_t>(p.boneMap[i])].owned = true;
     }
 
     // статичные части (без скелета)

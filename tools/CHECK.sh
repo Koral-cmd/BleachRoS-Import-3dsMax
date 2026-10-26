@@ -46,6 +46,7 @@ S=$B/samples
   $B/bleachdump $S/pl999_cos00_00.tmd2 $S/pl999_hair00_00.tmd2 $S/pl999_wep00_00.tmd2
   $B/bleachdump $S/pl998_cos00_00.tmd2 $S/pl999_wep00_00.tmd2
   $B/bleachdump $S/pl999_cos00_00.tmd2 $S/pl999_face00_00.tmd2 $S/pl999_hair01_00.tmd2
+  $B/bleachdump $S/pl996_cos00_00.tmd2 $S/pl996_wep00_00.tmd2 | grep -v "^  bone\|layout\|mat #\|model "
   $B/bleachdump $S/pl999_cos00_00.lds
   $B/bleachdump $S/pl999.tactpkg idle_delta $S/pl999_cos00_00.tmd2
   $B/bleachdump $S/pl999.tactpkg pose_abs $S/pl999_cos00_00.tmd2

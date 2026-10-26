@@ -273,3 +273,4 @@
 { "номер клипа вне списка", "clip index out of range" },
 { "клип за пределами пакета", "clip outside the pack" },
 { "несколько файлов", "several files" },
+{ "  %s: %zu общих костей не заняты другими частями - их bind взят из этого файла", "  %s: %zu shared bones not used by other parts - their bind is taken from this file" },

@@ -87,6 +87,17 @@ SKELETON 4
     note: перенесено на скелет (до кости: как в файле 0.100, как локальные 0.141 (высота скелета 1.725))
   MESH pl999_hair01_00/hairL verts=3 faces=1 mats=1 maps=2 weights=3 degenerate=0 bbox=(-0.0887 1.7911 0.0000)-(0.0364 1.8866 0.0200)
     note: вершины в локальных координатах костей (до кости: как в файле 1.400, как локальные 0.224 (высота скелета 1.725))
+TMD2 pl996_cos00_00: ver=0x209 flags=0xB496 stride=44 verts=6 tris=4 models=1 mats=2 tex=2 bones=5 tables=2
+TMD2 pl996_wep00_00: ver=0x209 flags=0x2416 stride=28 verts=3 tris=1 models=1 mats=1 tex=1 bones=2 tables=0
+  pl996_wep00_00: 1 общих костей не заняты другими частями - их bind взят из этого файла
+SKELETON 5
+  S 0 root parent=-1 world_t=(0.00000 0.00000 0.00000) local_t=(0.00000 0.00000 0.00000) src=pl996_cos00_00
+  S 1 spine parent=0 world_t=(0.00000 1.00000 0.00000) local_t=(0.00000 1.00000 0.00000) src=pl996_cos00_00
+  S 2 head parent=1 world_t=(-0.00000 1.60000 0.00000) local_t=(-0.00000 0.60000 0.00000) src=pl996_cos00_00
+  S 3 weapon_R parent=1 world_t=(0.50000 1.20000 0.00000) local_t=(0.50000 0.20000 0.00000) src=pl996_cos00_00
+  S 4 chain_A parent=3 world_t=(1.50000 1.20000 0.00000) local_t=(1.00000 0.00000 0.00000) src=pl996_wep00_00
+  MESH pl996_cos00_00/body verts=6 faces=4 mats=2 maps=2 weights=8 degenerate=0 bbox=(0.0000 0.0000 0.0000)-(1.0000 1.6000 0.0000)
+  MESH pl996_wep00_00/blade verts=3 faces=1 mats=1 maps=1 weights=3 degenerate=0 bbox=(0.5000 1.2000 0.0000)-(1.5000 1.3000 0.0000)
   tex 0 DXT1 4x4 alpha=0 bytes=144
   tex 1 DXT5 4x4 alpha=1 bytes=144
 TACTPKG pl999 container=actmng_pkg magic=actmng_pkg clips=2
@@ -157,7 +168,7 @@ unknown#1: кадров 11, костей в клипе 3, найдено 2, не
   F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
   F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
   F0 head anim=1 t=(-0.00000 1.60000 0.00000) dAngleToBind=0.00
-FIND bones=3 files=13 checked=12 opened=4
+FIND bones=3 files=15 checked=12 opened=4
   found pl999 [actmng_pkg] clips=2 fit=1 best=2/3
   found garganta [CATS] clips=2 fit=1 best=2/2
   found pl997 [actmng_pkg] clips=2 fit=1 best=2/3
@@ -180,6 +191,6 @@ garganta_open +1: кадров 11, костей в клипе 3, найдено 
   F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
   F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
   F0 head anim=1 t=(0.00000 1.60000 0.00000) dAngleToBind=0.00
-FIND bones=3 files=14 checked=13 opened=5
+FIND bones=3 files=16 checked=13 opened=5
   found pl999_fx [поиск по сигнатуре] clips=2 fit=1 best=2/2
   related pl999_fx [XFX1]
