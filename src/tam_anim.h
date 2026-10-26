@@ -55,8 +55,8 @@ Tmo MergeClips(const std::vector<Tmo>& clips, const std::string& name);
 // Общее имя: "garganta_line" + "garganta_outer" -> "garganta".
 std::string CommonClipName(const std::vector<std::string>& names);
 
-// Физика ткани по .cphy: кости-суставы, которых нет в клипе (плащ, ленты,
-// рукава, юбка), запекаются в позы poses: инерция, затухание, гравитация,
+// Физика ткани по .cphy: кости-суставы (плащ, ленты, рукава, юбка, волосы)
+// запекаются в позы poses; поза клипа - цель упругости: инерция, затухание, гравитация,
 // упругость к позе покоя, предел угла, длины связей. Корни цепочек идут за
 // анимацией. animated[] у затронутых костей становится 1.
 struct PhysicsSettings {

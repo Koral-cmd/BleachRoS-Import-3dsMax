@@ -662,6 +662,9 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         }
         ms += L"  ))\n";
     }
+    // материалы ещё и в слоты Material Editor (иначе редактор показывает пустые слоты,
+    // а материал видно только через "Pick from object")
+    ms += L" try (for i = 1 to (amin 24 mats.count) do meditMaterials[i] = mats[i]) catch ()\n";
     ms += L" OK\n)\n";
     if (!groups.empty() && !RunScript(ms)) Log(TR("[!] скрипт материалов не выполнился"));
 
@@ -1065,6 +1068,7 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     struct Ready { std::string name; std::vector<std::vector<tam::M4>> poses; std::vector<char> anim; bool scale = false; };
     std::vector<Ready> ready;
     std::vector<std::string> rejected;
+    size_t physBones = 0;
     std::vector<tam::Tmo> clips;
     for (size_t ci : clipIdx) {
         tam::Tmo clip;
@@ -1101,6 +1105,7 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
             tam::PhysicsSettings ps;
             const size_t nd = tam::SimulatePhysics(rig.skel, o.physJoints, o.physLinks, ps, r.poses, r.anim);
             if (nd > 0) Log(TR("    физика ткани: костей %zu"), nd);
+            physBones = std::max(physBones, nd);
         }
         for (const auto& pr : m.matched)
             for (int k = 6; k < 9; ++k)
@@ -1219,6 +1224,13 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     std::snprintf(b, sizeof b, TR("Добавлено клипов: %zu (кадры %d-%d), всего на таймлайне: %zu, ключей %zu, %d fps, линейные контроллеры%s"),
                   added.size(), added.front().start, added.back().end, loaded.size(), keys, GetFrameRate(), withScale ? TR(" (+ масштаб)") : "");
     report = b;
+    if (physBones > 0) {
+        char pb[160];
+        std::snprintf(pb, sizeof pb, TR("\nФизика ткани (.cphy): костей %zu"), physBones);
+        report += pb;
+    }
+    else if (o.physics) report += o.physJoints.empty() ? TR("\nФизика ткани: файлы .cphy персонажа не найдены (нужна папка игры)")
+                                                       : TR("\nФизика ткани: суставы .cphy не совпали с костями скелета");
     if (!rejected.empty())
         report += TR("\nОтброшено (не подходят к скелету): ") + std::to_string(rejected.size()) + " - " + rejected.front() +
                   (rejected.size() > 1 ? ", ..." : "");

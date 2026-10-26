@@ -282,3 +282,6 @@
 { "    физика ткани: костей %zu", "    cloth physics: %zu bones" },
 { "Физика %s: суставов %zu (новых %zu), связей %zu", "Physics %s: %zu joints (%zu new), %zu links" },
 { "Физика ткани из игры (.cphy): плащ, ленты, рукава, юбка, волосы - запекается в ключи", "Game cloth physics (.cphy): cloak, ribbons, sleeves, skirt, hair - baked into keys" },
+{ "\nФизика ткани (.cphy): костей %zu", "\nCloth physics (.cphy): %zu bones" },
+{ "\nФизика ткани: файлы .cphy персонажа не найдены (нужна папка игры)", "\nCloth physics: no .cphy files found for this character (game folder needed)" },
+{ "\nФизика ткани: суставы .cphy не совпали с костями скелета", "\nCloth physics: .cphy joints do not match the skeleton bones" },

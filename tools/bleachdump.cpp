@@ -144,7 +144,8 @@ int main(int argc, char** argv) {
         const std::vector<M4> rest = skel.RestWorlds();
         const int frames = 60;
         std::vector<std::vector<M4>> poses(frames, rest);
-        std::vector<char> anim(skel.bones.size(), 0);
+        // BLEACH_PHYS_ALL=1: все кости "в клипе" (как у настоящих клипов, где ключи есть и у ткани)
+        std::vector<char> anim(skel.bones.size(), std::getenv("BLEACH_PHYS_ALL") ? 1 : 0);
         anim[0] = 1;
         for (int f = 0; f < frames; ++f) {
             const double dx = (f < 15) ? 0.08 * f : 0.08 * 15;   // рывок вперёд (по +Z) и стоп

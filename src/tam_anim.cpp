@@ -242,12 +242,14 @@ size_t SimulatePhysics(const Skeleton& skel, const std::vector<PhysJoint>& joint
         const auto it = skel.byHash.find(joints[j].hash);
         if (it != skel.byHash.end() && jointOf[static_cast<size_t>(it->second)] < 0) jointOf[static_cast<size_t>(it->second)] = static_cast<int>(j);
     }
-    // динамические: сустав с физическим родителем, не анимирован клипом, есть масса
+    // динамические: сустав с физическим родителем и массой. Ключи клипа у такой
+    // кости (если есть) - только цель, к которой тянет упругость: в игре
+    // animBlendRate = 0, т.е. кость ведёт физика.
     std::vector<char> dyn(nb, 0);
     size_t nDyn = 0;
     for (size_t b = 0; b < nb; ++b) {
         const int j = jointOf[b];
-        if (j < 0 || animated[b]) continue;
+        if (j < 0) continue;
         const PhysJoint& pj = joints[static_cast<size_t>(j)];
         if (pj.parent == 0 || pj.invMass <= 0.0f || pj.isDummy) continue;
         const int p = skel.bones[b].parent;
