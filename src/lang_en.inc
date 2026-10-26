@@ -285,3 +285,5 @@
 { "\nФизика ткани (.cphy): костей %zu", "\nCloth physics (.cphy): %zu bones" },
 { "\nФизика ткани: файлы .cphy персонажа не найдены (нужна папка игры)", "\nCloth physics: no .cphy files found for this character (game folder needed)" },
 { "\nФизика ткани: суставы .cphy не совпали с костями скелета", "\nCloth physics: .cphy joints do not match the skeleton bones" },
+{ "  [!] запись последовательностей: %s", "  [!] writing sequences: %s" },
+{ "  [!] блок seqNames на rootNode не принял запись (в нём %s, нужно %zu) - список ведёт плагин", "  [!] the seqNames block on rootNode did not take the write (it has %s, needed %zu) - the plugin keeps the list" },

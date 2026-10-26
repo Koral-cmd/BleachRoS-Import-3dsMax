@@ -933,65 +933,119 @@ bool PullSceneSequences(std::vector<Loaded>& out) {
 }
 
 // Запись -> сцена (блок WhiteoutDex или note track на rootNode).
-void PublishSequences(const std::vector<Loaded>& clips) {
+// Каждый массив блока пишется отдельно; после записи число последовательностей
+// читается обратно. true = сцена содержит ровно эти клипы.
+bool PublishSequences(const std::vector<Loaded>& clips) {
     Interface* ip = GetCOREInterface();
     const std::wstring file = DataDir() + L"\\seq_mode.txt";
     DeleteFileW2(file);
-    std::wstring recs;
-    for (size_t i = 0; i < clips.size(); ++i)
-        recs += std::wstring(i ? L"," : L"") + L"#(" + Q(clips[i].name) + L"," + std::to_wstring(clips[i].start) + L"," +
-                std::to_wstring(clips[i].end) + L"," + (clips[i].nonLooping ? L"true" : L"false") + L")";
+    std::wstring names, starts, ends, loops;
+    for (size_t i = 0; i < clips.size(); ++i) {
+        const wchar_t* sep = i ? L"," : L"";
+        names += sep + Q(clips[i].name);
+        starts += sep + std::to_wstring(clips[i].start);
+        ends += sep + std::to_wstring(clips[i].end);
+        loops += std::wstring(sep) + (clips[i].nonLooping ? L"true" : L"false");
+    }
     std::wstring s =
-        L"(\n local recs = #(" + recs + L")\n"
+        L"(\n local errs = \"\"\n"
+        L" local nN = #(" + names + L"), nS = #(" + starts + L"), nE = #(" + ends + L"), nL = #(" + loops + L")\n"
         L" local wdx = (try (::WdxSequenceStorage != undefined) catch (false))\n"
-        L" if wdx do try (::WdxSequenceStorage.ensureCA()) catch (wdx = false)\n"
+        L" if wdx do try (::WdxSequenceStorage.ensureCA()) catch (errs += \"ensureCA: \" + (getCurrentException()) + \"; \"; wdx = false)\n"
         L" local hasCA = (try (rootNode.seqNames.count >= 0) catch (false))\n"
         L" local mode = \"notes\"\n"
+        L" local back = -1\n"
         L" if hasCA do (\n"
-        L"  fn grab p = (try (for v in (getProperty rootNode p) collect v) catch (#()))\n"
-        L"  local oS = grab #startFrames, oR = grab #rarity, oM = grab #moveSpeed, oX = grab #seqExtents, oG = grab #sharedGroup\n"
-        L"  local nN = #(), nS = #(), nE = #(), nL = #(), nR = #(), nM = #(), nX = #(), nG = #()\n"
-        L"  for r in recs do (\n"
-        L"   local k = findItem oS r[2]\n"
-        L"   append nN r[1]; append nS r[2]; append nE r[3]; append nL r[4]\n"
-        L"   append nR (if k > 0 and k <= oR.count then oR[k] else 0.0)\n"
-        L"   append nM (if k > 0 and k <= oM.count then oM[k] else 0.0)\n"
-        L"   append nX (if k > 0 and k <= oX.count then oX[k] else \"\")\n"
-        L"   append nG (if k > 0 and k <= oG.count then oG[k] else \"\")\n"
+        L"  local oS = #(), oR = #(), oM = #(), oX = #(), oG = #()\n"
+        L"  try (oS = for v in rootNode.startFrames collect v) catch ()\n"
+        L"  try (oR = for v in rootNode.rarity collect v) catch ()\n"
+        L"  try (oM = for v in rootNode.moveSpeed collect v) catch ()\n"
+        L"  try (oX = for v in rootNode.seqExtents collect v) catch ()\n"
+        L"  try (oG = for v in rootNode.sharedGroup collect v) catch ()\n"
+        L"  local nR = #(), nM = #(), nX = #(), nG = #()\n"
+        L"  for i = 1 to nS.count do (\n"
+        L"   local k = findItem oS nS[i]\n"
+        L"   append nR (if k > 0 and k <= oR.count then (oR[k] as float) else 0.0)\n"
+        L"   append nM (if k > 0 and k <= oM.count then (oM[k] as float) else 0.0)\n"
+        L"   append nX (if k > 0 and k <= oX.count then (oX[k] as string) else \"\")\n"
+        L"   append nG (if k > 0 and k <= oG.count then (oG[k] as string) else \"\")\n"
         L"  )\n"
-        L"  rootNode.seqNames = nN; rootNode.startFrames = nS; rootNode.endFrames = nE; rootNode.nonLooping = nL\n"
-        L"  rootNode.rarity = nR; rootNode.moveSpeed = nM\n"
+        L"  try (rootNode.seqNames = nN) catch (errs += \"seqNames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (rootNode.startFrames = nS) catch (errs += \"startFrames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (rootNode.endFrames = nE) catch (errs += \"endFrames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (rootNode.nonLooping = nL) catch (errs += \"nonLooping: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (rootNode.rarity = nR) catch (errs += \"rarity: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (rootNode.moveSpeed = nM) catch (errs += \"moveSpeed: \" + (getCurrentException()) + \"; \")\n"
         L"  try (rootNode.seqExtents = nX) catch ()\n"
         L"  try (rootNode.sharedGroup = nG) catch ()\n"
-        L"  while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)\n"
-        L"  mode = (if wdx then \"wdx\" else \"ca\")\n"
+        L"  back = (try (rootNode.seqNames.count) catch (-1))\n"
+        L"  if back == nN.count then (\n"
+        L"   try (while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)) catch ()\n"
+        L"   mode = (if wdx then \"wdx\" else \"ca\")\n"
+        L"  )\n"
         L" )\n"
-        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\" mode to:f\n close f\n OK\n)\n";
+        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\\n%\\n%\\n\" mode back errs to:f\n close f\n OK\n)\n";
     const bool ran = RunScript(s);
-    std::string mode = ReadTextFile(file);
+    const std::string res = ReadTextFile(file);
     DeleteFileW2(file);
+    std::string mode, back, errs;
+    {
+        size_t a1 = res.find('\n');
+        mode = res.substr(0, a1);
+        if (a1 != std::string::npos) {
+            const size_t a2 = res.find('\n', a1 + 1);
+            back = res.substr(a1 + 1, a2 == std::string::npos ? std::string::npos : a2 - a1 - 1);
+            if (a2 != std::string::npos) errs = res.substr(a2 + 1);
+        }
+        while (!mode.empty() && (mode.back() == '\r' || mode.back() == ' ')) mode.pop_back();
+        while (!errs.empty() && (errs.back() == '\n' || errs.back() == '\r')) errs.pop_back();
+    }
     if (!ran || mode.empty()) mode = "notes";
-    if (mode.compare(0, 5, "notes") == 0 && ip != nullptr) LoadedToNotes(ip->GetRootNode(), clips);
+    if (!errs.empty()) Log(TR("  [!] запись последовательностей: %s"), errs.c_str());
+    bool ok = true;
+    if (mode.compare(0, 5, "notes") == 0) {
+        // блока нет (или он не принял запись) - note track на rootNode
+        if (ip != nullptr) LoadedToNotes(ip->GetRootNode(), clips);
+        if (back.size() && back != "-1") {
+            Log(TR("  [!] блок seqNames на rootNode не принял запись (в нём %s, нужно %zu) - список ведёт плагин"), back.c_str(),
+                clips.size());
+            ok = false;
+        }
+    }
     Log(TR("  последовательностей %zu -> %s"), clips.size(),
         mode.compare(0, 3, "wdx") == 0 ? "WhiteoutDex (Sequence Manager)" : mode.compare(0, 2, "ca") == 0 ? TR("блок seqNames на rootNode") : TR("note track на rootNode"));
+    return ok;
 }
 
-// Текущие клипы скелета: блок WhiteoutDex (если не пуст), иначе запись на helper'е.
+// Текущие клипы скелета. Главный список - на helper'е скелета. Блок WhiteoutDex
+// читается, только если последняя запись в него прошла (тогда в нём могут быть
+// правки из Sequence Manager: имена, кадры, удаление).
 std::vector<Loaded> CurrentLoaded(INode* holder) {
+    std::vector<Loaded> own = NotesToLoaded(holder);
+    SortLoaded(own);
+    if (holder != nullptr && GetProp(holder, "bleach_seq_sync") == "0") return own;
     std::vector<Loaded> fromScene;
     if (PullSceneSequences(fromScene)) {
+        // блок короче нашего списка и всё в нём есть у нас - это старый блок, а не правка
+        bool stale = fromScene.size() < own.size();
+        for (const Loaded& l : fromScene) {
+            bool found = false;
+            for (const Loaded& o : own)
+                if (o.start == l.start) found = true;
+            if (!found) stale = false;
+        }
+        if (stale) return own;
         LoadedToNotes(holder, fromScene);
         return fromScene;
     }
-    std::vector<Loaded> r = NotesToLoaded(holder);
-    SortLoaded(r);
-    return r;
+    return own;
 }
 
 void StoreLoaded(INode* holder, std::vector<Loaded> clips) {
     SortLoaded(clips);
     LoadedToNotes(holder, clips);
-    PublishSequences(clips);
+    const bool ok = PublishSequences(clips);
+    if (holder != nullptr) SetProp(holder, "bleach_seq_sync", ok ? "1" : "0");
 }
 
 bool IsLinear(Control* c, ULONG id) { return c != nullptr && c->ClassID() == Class_ID(id, 0); }
