@@ -625,6 +625,54 @@ bool TactPkg::Clip(size_t i, Tmo& out, std::string& err) const {
 }
 
 // ============================================================
+namespace {
+struct QuickBuf {
+    std::vector<uint8_t> out;
+};
+int QuickPut(const void* p, int len, void* user) {
+    QuickBuf* q = static_cast<QuickBuf*>(user);
+    const uint8_t* b = static_cast<const uint8_t*>(p);
+    q->out.insert(q->out.end(), b, b + len);
+    return q->out.size() >= 256 ? 0 : 1;      // заголовка хватит - стоп
+}
+} // namespace
+
+Tmd2Quick QuickTmd2(const std::string& path) {
+    Tmd2Quick r;
+    std::vector<uint8_t> head;
+    try {
+        std::ifstream f(std::filesystem::u8path(path), std::ios::binary);
+        if (!f) return r;
+        head.resize(64 * 1024);
+        f.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
+        head.resize(static_cast<size_t>(f.gcount()));
+    } catch (...) {
+        return r;
+    }
+    std::vector<uint8_t> d;
+    if (head.size() >= 24 && std::memcmp(head.data(), "PZZE", 4) == 0) {
+        uint64_t ofs = 0;
+        std::memcpy(&ofs, head.data() + 16, 8);
+        if (ofs >= head.size()) return r;
+        QuickBuf q;
+        size_t inSize = head.size() - static_cast<size_t>(ofs);
+        tinfl_decompress_mem_to_callback(head.data() + ofs, &inSize, QuickPut, &q, TINFL_FLAG_PARSE_ZLIB_HEADER);
+        d.swap(q.out);
+    } else {
+        d.swap(head);
+    }
+    if (d.size() < 188 || std::memcmp(d.data(), "tmd0", 4) != 0) return r;
+    uint16_t flags = 0;
+    std::memcpy(&flags, d.data() + 6, 2);
+    std::memcpy(&r.models, d.data() + 104, 4);
+    std::memcpy(&r.tris, d.data() + 140, 4);
+    std::memcpy(&r.verts, d.data() + 156, 4);
+    if (flags & 0x2000) std::memcpy(&r.bones, d.data() + 184, 4);
+    r.ok = true;
+    return r;
+}
+
+// ============================================================
 bool LoadTmd2(const std::string& path, Tmd2& out, std::string& err) {
     std::vector<uint8_t> d;
     if (!ReadAll(path, d, err)) return false;

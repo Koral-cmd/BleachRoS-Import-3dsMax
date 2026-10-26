@@ -171,6 +171,39 @@ const Character* CurrentChar(const ModelState& s) {
     return it == g_index.chars.end() ? nullptr : &it->second;
 }
 
+// Геометрия файла (кэш по пути): для колонки LOD
+const tam::Tmd2Quick& Quick(const std::string& path) {
+    static std::map<std::string, tam::Tmd2Quick> cache;
+    auto it = cache.find(path);
+    if (it == cache.end()) it = cache.emplace(path, tam::QuickTmd2(path)).first;
+    return it->second;
+}
+
+std::string KTris(uint32_t t) {
+    char b[32];
+    if (t >= 1000) std::snprintf(b, sizeof b, "%.1fk", t / 1000.0);
+    else std::snprintf(b, sizeof b, "%u", t);
+    return b;
+}
+
+// "H 12.3k / M 4.1k" (треугольники по уровням); same = геометрия у всех уровней одинаковая
+std::string LodGeometry(const PartEntry& p, bool& same, bool& real) {
+    std::string r;
+    same = true;
+    real = false;
+    const tam::Tmd2Quick* first = nullptr;
+    for (const auto& kv : p.byQuality) {
+        const tam::Tmd2Quick& q = Quick(kv.second.path);
+        if (!r.empty()) r += " / ";
+        r += QualityShort(kv.first) + " " + (q.ok ? KTris(q.tris) : std::string("?"));
+        if (first == nullptr) first = &q;
+        else if (!(q.ok && first->ok && q.tris == first->tris && q.verts == first->verts)) same = false;
+    }
+    real = p.byQuality.size() > 1 && !same;
+    if (p.byQuality.size() > 1 && same) r += "  (=)";
+    return r;
+}
+
 void FillParts(HWND dlg, ModelState& s) {
     HWND lv = GetDlgItem(dlg, IDC_M_PARTS);
     ListView_DeleteAllItems(lv);
@@ -179,7 +212,8 @@ void FillParts(HWND dlg, ModelState& s) {
     if (ch != nullptr) {
         for (size_t i = 0; i < ch->parts.size(); ++i) {
             const PartEntry& p = ch->parts[i];
-            std::wstring stem = Wide(p.stem), kind = Wide(p.kind), lod = Wide(p.LodText());
+            bool same = false, real = false;
+            std::wstring stem = Wide(p.stem), kind = Wide(p.kind), lod = Wide(LodGeometry(p, same, real));
             unsigned long long size = 0;
             const auto best = p.byQuality.find(MainQuality(dlg));
             size = (best != p.byQuality.end()) ? best->second.size : p.byQuality.begin()->second.size;
@@ -211,12 +245,20 @@ void FillParts(HWND dlg, ModelState& s) {
         ++row;
     }
     if (ch != nullptr) {
-        int withLod = 0;
-        for (const PartEntry& p : ch->parts)
-            if (p.LodCount() > 1) ++withLod;
-        char t[200];
-        if (withLod > 0)
-            std::snprintf(t, sizeof t, "%s: частей %zu, с LOD %d (уровней до %d)", ch->id.c_str(), ch->parts.size(), withLod, ch->MaxLods());
+        int realLod = 0, sameLod = 0;
+        for (const PartEntry& p : ch->parts) {
+            bool same = false, real = false;
+            LodGeometry(p, same, real);
+            if (real) ++realLod;
+            else if (p.LodCount() > 1) ++sameLod;
+        }
+        char t[300];
+        if (realLod > 0)
+            std::snprintf(t, sizeof t, "%s: частей %zu. Настоящий LOD (меньше треугольников): %d, одинаковая геометрия: %d", ch->id.c_str(),
+                          ch->parts.size(), realLod, sameLod);
+        else if (sameLod > 0)
+            std::snprintf(t, sizeof t, "%s: частей %zu. LOD нет: в %d частях папки качества с той же геометрией (=)", ch->id.c_str(),
+                          ch->parts.size(), sameLod);
         else
             std::snprintf(t, sizeof t, "%s: частей %zu, LOD нет", ch->id.c_str(), ch->parts.size());
         SetText(dlg, IDC_M_STATUS, t);
@@ -299,6 +341,7 @@ void DoImport(HWND dlg, ModelState& s) {
     ImportOptions o = ReadOptions(dlg, s.st);
     s.st.Save();
     std::vector<ImportItem> items;
+    int lodSame = 0;
     HWND lv = GetDlgItem(dlg, IDC_M_PARTS);
     const Character* ch = CurrentChar(s);
     const std::string mainQ = MainQuality(dlg);
@@ -322,8 +365,14 @@ void DoImport(HWND dlg, ModelState& s) {
         items.push_back({ mainIt->second.path, 0, mainIt->first });
         if (o.lods) {
             int lod = 1;
+            const tam::Tmd2Quick& mq = Quick(mainIt->second.path);
             for (const auto& kv : p.byQuality) {
                 if (kv.first == mainIt->first) continue;
+                const tam::Tmd2Quick& q = Quick(kv.second.path);
+                if (q.ok && mq.ok && q.tris == mq.tris && q.verts == mq.verts) {
+                    ++lodSame;      // та же геометрия - не LOD, пропускаем
+                    continue;
+                }
                 items.push_back({ kv.second.path, lod++, kv.first });
             }
         }
@@ -340,6 +389,9 @@ void DoImport(HWND dlg, ModelState& s) {
         UpdateWindow(dlg);
         ok = s.bridge->importModels && s.bridge->importModels(items, o, report);
     }
+    if (lodSame > 0)
+        report += "\n\nLOD пропущено: " + std::to_string(lodSame) +
+                  " (в папке другого качества та же геометрия - отличаются только текстуры)";
     SetText(dlg, IDC_M_STATUS, ok ? "Готово. Подробности: Downloads\\Import bleach.log" : "Ошибка - см. лог");
     MessageBoxW(dlg, Wide(report).c_str(), L"BLEACH RoS Import", ok ? MB_ICONINFORMATION : MB_ICONERROR);
 }
@@ -377,8 +429,8 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
         HWND lv = GetDlgItem(dlg, IDC_M_PARTS);
         ListView_SetExtendedListViewStyle(lv, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-        const wchar_t* cols[] = { L"Часть", L"Тип", L"LOD", L"Размер" };
-        const int widths[] = { 210, 60, 70, 70 };
+        const wchar_t* cols[] = { L"Часть", L"Тип", L"LOD (треугольники)", L"Размер" };
+        const int widths[] = { 175, 45, 160, 60 };
         for (int i = 0; i < 4; ++i) {
             LVCOLUMNW c{};
             c.mask = LVCF_TEXT | LVCF_WIDTH;

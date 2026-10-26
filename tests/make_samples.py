@@ -204,3 +204,13 @@ tmo_pkg=pkg("acttmo_pkg",[("idle_delta",c_delta),("pose_abs",c_abs)])
 mng=pkg("actmng_pkg",[("script.lua",b"print('x')"),("motion",tmo_pkg)])
 open(os.path.join(out,"pl999.tactpkg"),"wb").write(pzze("tact",mng))
 print("ok", out)
+
+# ---------- лицо с ДРУГОЙ bind-позой общей кости (голова в начале координат) ----------
+fb=[("head",-1,trans(0,0,0)),("eye_L",0,trans(0.1,0.1,0.05))]
+fv=[V((0,0,0.1),(0,0,1),(0,0),[255],[0]),V((0.1,0,0.1),(0,0,1),(1,0),[255],[0]),V((0.1,0.1,0.06),(0,0,1),(0,1),[255],[1])]
+open(os.path.join(out,"pl999_face00_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl999_face00_00",fb,fv,[(0,1,2)],[("face",[(0,None,0,1)])],[("BSS1",[0],[1.0])],1,[],flags)))
+
+# ---------- волосы: bind как у тела, но вершины в локальных координатах головы ----------
+lb=[("spine",-1,trans(0,1,0)),("head",0,mat_mul(rotz(0.3),trans(0,1.6,0)))]
+lv=[V((0,0.2,0),(0,1,0),(0,0),[255],[1]),V((0.1,0.2,0),(0,1,0),(1,0),[255],[1]),V((0,0.3,0.02),(0,1,0),(0,1),[255],[1])]
+open(os.path.join(out,"pl999_hair01_00.tmd2"),"wb").write(pzze("tmd2",make_tmd2("pl999_hair01_00",lb,lv,[(0,1,2)],[("hairL",[(0,None,0,1)])],[("BHA1",[0],[0.2]*15)],1,[],flags)))

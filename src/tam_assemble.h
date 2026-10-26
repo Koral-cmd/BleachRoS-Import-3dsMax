@@ -48,6 +48,11 @@ struct Part {
     M4 attachMatrix = Ident();               // сдвиг части при прицеплении
     int attachedTo = -1;                     // кость, к которой прицеплены корни
     int staticParent = -1;                   // для меша без скелета
+    // Переход "пространство файла части -> скелет" для каждой кости файла.
+    // Лицо/волосы несут свои копии общих костей (шея, голова) с ДРУГОЙ
+    // bind-позой; вершины и новые кости части переносятся по этим матрицам.
+    std::vector<M4> boneCorr;
+    double corrMax = 0.0;                    // насколько переход отличается от единичного
 };
 
 struct MapChannel {
@@ -70,6 +75,7 @@ struct PartMesh {
     bool skinned = false;
     int staticParent = -1;
     size_t degenerate = 0;
+    std::string note;                        // диагностика (в лог)
 };
 
 struct BuildOptions {

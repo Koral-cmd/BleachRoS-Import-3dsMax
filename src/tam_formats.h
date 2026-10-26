@@ -167,6 +167,13 @@ bool LoadLds(const std::string& path, Lds& out, std::string& err);
 bool LoadTact(const std::string& path, TactPkg& out, std::string& err);
 bool LoadTmo(const std::string& path, Tmo& out, std::string& err);
 
+// Быстро: вершины / треугольники / модели .tmd2 по заголовку (читает начало файла).
+struct Tmd2Quick {
+    bool ok = false;
+    uint32_t verts = 0, tris = 0, models = 0, bones = 0;
+};
+Tmd2Quick QuickTmd2(const std::string& path);
+
 std::string FileStem(const std::string& path);   // без папки и расширения
 
 } // namespace tam

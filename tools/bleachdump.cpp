@@ -79,6 +79,7 @@ static int DumpModels(const std::vector<std::string>& files, Skeleton* skelOut) 
             std::printf("  MESH %s/%s verts=%zu faces=%zu mats=%zu maps=%zu weights=%zu degenerate=%zu bbox=(%.4f %.4f %.4f)-(%.4f %.4f %.4f)\n",
                         parts[p].tmd->name.c_str(), m.name.c_str(), m.pos.size() / 3, m.faces.size() / 3,
                         m.materials.size(), m.maps.size(), wsum, m.degenerate, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+            if (!m.note.empty()) std::printf("    note: %s\n", m.note.c_str());
         }
     }
     if (skelOut != nullptr) *skelOut = skel;

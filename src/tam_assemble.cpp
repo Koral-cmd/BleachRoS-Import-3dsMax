@@ -152,23 +152,29 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                 log.push_back(Format("  [!] %s: вырожденная bind-матрица у кости %s", t.name.c_str(), t.bones[i].name.c_str()));
         }
 
+        // ---- переход части на скелет по общим костям ----
+        const size_t n = t.bones.size();
+        p.boneCorr.assign(n, Ident());
+        std::vector<char> hasCorr(n, 0);
         size_t shared = 0;
-        double worst = 0.0;
-        bool applyAttach = false;
-        for (size_t i = 0; i < t.bones.size(); ++i) {
+        int anchor = -1, anchorDepth = 1 << 30;        // общая кость ближе всех к корню
+        for (size_t i = 0; i < n; ++i) {
             const auto it = skel.byHash.find(t.bones[i].hash);
             if (it == skel.byHash.end()) continue;
             const SkelBone& sb = skel.bones[static_cast<size_t>(it->second)];
-            // общие кости добавлены прицепленной частью (оружие) - LOD этой части едет так же
-            if (shared == 0 && !IsIdent(sb.attach)) {
-                p.attachMatrix = sb.attach;
-                applyAttach = true;
-            }
+            M4 inv;
+            Inverse(worlds[i], inv);
+            p.boneCorr[i] = Mul(inv, sb.bindWorld);     // part -> skeleton
+            hasCorr[i] = 1;
+            p.corrMax = std::max(p.corrMax, MaxAbsDiff(p.boneCorr[i], Ident()));
             ++shared;
-            worst = std::max(worst, MaxAbsDiff(applyAttach ? Mul(worlds[i], p.attachMatrix) : worlds[i], sb.bindWorld));
+            int d = 0;
+            for (int k = t.bones[i].parent; k >= 0 && d < 4096; k = t.bones[static_cast<size_t>(k)].parent) ++d;
+            if (d < anchorDepth) { anchorDepth = d; anchor = static_cast<int>(i); }
         }
-        if (shared && worst > 1e-3)
-            log.push_back(Format("  [!] %s: bind общих костей расходится (макс. %.4f)", t.name.c_str(), worst));
+        if (shared && p.corrMax > 1e-3)
+            log.push_back(Format("  %s: общие кости (%zu) стоят в файле иначе, чем на скелете (до %.3f) -> часть перенесена на скелет",
+                                 t.name.c_str(), shared, p.corrMax));
 
         if (!skel.bones.empty() && shared == 0 && opt.attachBone != "none") {
             int ai = -1;
@@ -181,7 +187,8 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
             if (ai >= 0) {
                 p.attachedTo = ai;
                 p.attachMatrix = skel.bones[static_cast<size_t>(ai)].bindWorld;
-                applyAttach = true;
+                for (size_t i = 0; i < n; ++i) { p.boneCorr[i] = p.attachMatrix; hasCorr[i] = 1; }
+                p.corrMax = MaxAbsDiff(p.attachMatrix, Ident());
                 log.push_back(Format("  %s: общих костей нет -> прицеплен к '%s'", t.name.c_str(),
                                      skel.bones[static_cast<size_t>(ai)].name.c_str()));
             } else {
@@ -189,9 +196,10 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                                      t.name.c_str()));
             }
         }
+        const M4 fallback = (anchor >= 0) ? p.boneCorr[static_cast<size_t>(anchor)] : p.attachMatrix;
 
-        // добавляем в порядке "родитель раньше ребёнка"
-        std::vector<char> done(t.bones.size(), 0);
+        // добавляем в порядке "родитель раньше ребёнка"; новая кость берёт переход родителя
+        std::vector<char> done(n, 0);
         std::function<void(size_t, int)> addBone = [&](size_t i, int guard) {
             if (done[i] || guard > 4096) return;
             const Tmd2Bone& b = t.bones[i];
@@ -202,12 +210,16 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                 p.boneMap[i] = it->second;
                 return;
             }
+            if (!hasCorr[i]) {
+                p.boneCorr[i] = (b.parent >= 0) ? p.boneCorr[static_cast<size_t>(b.parent)] : fallback;
+                hasCorr[i] = 1;
+            }
             const int parent = (b.parent >= 0) ? p.boneMap[static_cast<size_t>(b.parent)] : p.attachedTo;
-            const M4 w = applyAttach ? Mul(worlds[i], p.attachMatrix) : worlds[i];
+            const M4 w = Mul(worlds[i], p.boneCorr[i]);
             const std::string name = b.name.empty() ? std::to_string(b.hash) : b.name;
-            p.boneMap[i] = skel.Add(b.hash, name, parent, w, t.name, p.kind, applyAttach ? p.attachMatrix : Ident());
+            p.boneMap[i] = skel.Add(b.hash, name, parent, w, t.name, p.kind, p.boneCorr[i]);
         };
-        for (size_t i = 0; i < t.bones.size(); ++i) addBone(i, 0);
+        for (size_t i = 0; i < n; ++i) addBone(i, 0);
     }
 
     // статичные части (без скелета)
@@ -238,14 +250,73 @@ struct WeldKey {
 };
 } // namespace
 
+namespace {
+double Dist(const double a[3], const double b[3]) {
+    return std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
+}
+double Median(std::vector<double> v) {
+    if (v.empty()) return 0.0;
+    std::nth_element(v.begin(), v.begin() + static_cast<long>(v.size() / 2), v.end());
+    return v[v.size() / 2];
+}
+} // namespace
+
+// Режим вершин части: 0 = вершины в пространстве файла (обычный),
+// 1 = вершины в локальных координатах своей кости (запасной вариант, если
+// так они оказываются заметно ближе к своим костям).
+int DetectVertexSpace(const Part& p, const Skeleton& skel, std::string& note) {
+    const Tmd2& t = *p.tmd;
+    if (t.bones.empty() || !t.HasWeights() || p.boneCorr.size() != t.bones.size()) return 0;
+    std::vector<std::pair<int, float>> ws;
+    std::vector<double> d0, d1;
+    const uint32_t step = std::max<uint32_t>(1, t.vertexCount / 3000);
+    // таблица индексов: первая, что упоминается в моделях (для выборки достаточно)
+    int table = -1;
+    for (const Tmd2Model& m : t.models)
+        if (!m.parts.empty()) { table = m.parts[0].table; break; }
+    for (uint32_t v = 0; v < t.vertexCount; v += step) {
+        t.Weights(v, table, ws);
+        if (ws.empty()) continue;
+        size_t best = 0;
+        for (size_t k = 1; k < ws.size(); ++k)
+            if (ws[k].second > ws[best].second) best = k;
+        const int fb = ws[best].first;
+        if (fb < 0 || fb >= static_cast<int>(p.boneMap.size()) || p.boneMap[static_cast<size_t>(fb)] < 0) continue;
+        const M4& bw = skel.bones[static_cast<size_t>(p.boneMap[static_cast<size_t>(fb)])].bindWorld;
+        const double bp[3] = { bw.m[12], bw.m[13], bw.m[14] };
+        double a[3], b[3];
+        TransformPoint(p.boneCorr[static_cast<size_t>(fb)], t.pos[3ull * v], t.pos[3ull * v + 1], t.pos[3ull * v + 2], a);
+        TransformPoint(bw, t.pos[3ull * v], t.pos[3ull * v + 1], t.pos[3ull * v + 2], b);
+        d0.push_back(Dist(a, bp));
+        d1.push_back(Dist(b, bp));
+    }
+    if (d0.size() < 3) return 0;
+    double lo = 1e30, hi = -1e30;
+    for (const SkelBone& b : skel.bones) { lo = std::min(lo, b.bindWorld.m[13]); hi = std::max(hi, b.bindWorld.m[13]); }
+    const double height = std::max(1e-6, hi - lo);
+    const double m0 = Median(d0), m1 = Median(d1);
+    char buf[200];
+    std::snprintf(buf, sizeof buf, "до кости: как в файле %.3f, как локальные %.3f (высота скелета %.3f)", m0, m1, height);
+    note = buf;
+    return (m1 < 0.25 * m0 && m0 > 0.08 * height) ? 1 : 0;
+}
+
 void BuildMeshes(const std::vector<Part>& parts, int partIndex, const Skeleton& skel, const BuildOptions& opt,
                  std::vector<PartMesh>& out) {
-    (void)skel;
     const Part& p = parts[static_cast<size_t>(partIndex)];
     const Tmd2& t = *p.tmd;
-    const bool applyA = !IsIdent(p.attachMatrix);
     const std::vector<float>& nsrc = !t.nrm2.empty() ? t.nrm2 : t.nrm;
     const bool skinned = !t.bones.empty() && t.HasWeights();
+    std::string spaceNote;
+    const int space = DetectVertexSpace(p, skel, spaceNote);
+    const bool perBone = skinned && p.boneCorr.size() == t.bones.size() && (space == 1 || p.corrMax > 1e-6);
+    const M4 rigid = (!p.boneCorr.empty() && p.staticParent < 0) ? p.boneCorr[0] : p.attachMatrix;
+    const bool applyRigid = !IsIdent(rigid);
+    // матрица вершины для кости файла fb
+    auto boneXf = [&](int fb) -> const M4& {
+        if (space == 1) return skel.bones[static_cast<size_t>(p.boneMap[static_cast<size_t>(fb)])].bindWorld;
+        return p.boneCorr[static_cast<size_t>(fb)];
+    };
 
     std::vector<std::pair<int, float>> ws;
     for (const Tmd2Model& model : t.models) {
@@ -253,6 +324,8 @@ void BuildMeshes(const std::vector<Part>& parts, int partIndex, const Skeleton& 
         PartMesh pm;
         pm.name = model.name;
         pm.part = partIndex;
+        if (space == 1) pm.note = "вершины в локальных координатах костей (" + spaceNote + ")";
+        else if (p.corrMax > 1e-3) pm.note = "перенесено на скелет (" + spaceNote + ")";
         pm.skinned = skinned;
         pm.staticParent = p.staticParent;
         // скелет есть, а весов нет (жёсткое оружие/аксессуар) - вешаем на первую кость части
@@ -305,19 +378,29 @@ void BuildMeshes(const std::vector<Part>& parts, int partIndex, const Skeleton& 
                     }
                     if (isNew) {
                         const double x = t.pos[3ull * vi], y = t.pos[3ull * vi + 1], z = t.pos[3ull * vi + 2];
-                        if (applyA) {
-                            double r[3];
-                            TransformPoint(p.attachMatrix, x, y, z, r);
-                            pm.pos.push_back(static_cast<float>(r[0]));
-                            pm.pos.push_back(static_cast<float>(r[1]));
-                            pm.pos.push_back(static_cast<float>(r[2]));
-                        } else {
-                            pm.pos.push_back(static_cast<float>(x));
-                            pm.pos.push_back(static_cast<float>(y));
-                            pm.pos.push_back(static_cast<float>(z));
+                        double r[3] = { x, y, z };
+                        if (skinned) t.Weights(vi, sp.table, ws);
+                        bool done = false;
+                        if (perBone && !ws.empty()) {
+                            // смесь переходов по весам вершины
+                            double acc[3] = { 0, 0, 0 }, wsum = 0.0;
+                            for (const auto& pr : ws) {
+                                if (pr.first < 0 || pr.first >= static_cast<int>(p.boneMap.size()) || p.boneMap[static_cast<size_t>(pr.first)] < 0) continue;
+                                double q[3];
+                                TransformPoint(boneXf(pr.first), x, y, z, q);
+                                for (int a = 0; a < 3; ++a) acc[a] += q[a] * pr.second;
+                                wsum += pr.second;
+                            }
+                            if (wsum > 1e-9) {
+                                for (int a = 0; a < 3; ++a) r[a] = acc[a] / wsum;
+                                done = true;
+                            }
                         }
+                        if (!done && applyRigid) TransformPoint(rigid, x, y, z, r);
+                        pm.pos.push_back(static_cast<float>(r[0]));
+                        pm.pos.push_back(static_cast<float>(r[1]));
+                        pm.pos.push_back(static_cast<float>(r[2]));
                         if (skinned) {
-                            t.Weights(vi, sp.table, ws);
                             for (const auto& pr : ws) {
                                 if (pr.first < 0 || pr.first >= static_cast<int>(p.boneMap.size())) continue;
                                 const int sb = p.boneMap[static_cast<size_t>(pr.first)];

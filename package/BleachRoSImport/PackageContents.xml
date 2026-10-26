@@ -7,102 +7,102 @@
     ProductType="Application"
     Name="BleachRoSImport"
     Description="BLEACH Rebirth of Souls Importer"
-    AppVersion="1.1.0"
-    FriendlyVersion="1.1.0"
+    AppVersion="1.1.1"
+    FriendlyVersion="1.1.1"
     Author="Koral-cmd"
     UpgradeCode="{F7C19872-21CE-4544-9B77-7D12F1F4B7B9}"
-    ProductCode="{6FABDC62-F6EA-4312-90F5-83CCD833042C}">
+    ProductCode="{C11639C2-D721-4D0A-B8E8-3AA87B06B2FD}">
 
     <CompanyDetails Name="Koral-cmd" />
     <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2016" SeriesMax="2027" />
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2016" SeriesMax="2016" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2016/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2016/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2017" SeriesMax="2017" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2017/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2017/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2018" SeriesMax="2018" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2018/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2018/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2019" SeriesMax="2019" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2019/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2019/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2020" SeriesMax="2020" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2020/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2020/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2021" SeriesMax="2021" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2021/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2021/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2022" SeriesMax="2022" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2022/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2022/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2023" SeriesMax="2023" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2023/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2023/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2024" SeriesMax="2024" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2024/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2024/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2025" SeriesMax="2025" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2025/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2025/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2026" SeriesMax="2026" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2026/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2026/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="plugins parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2027" SeriesMax="2027" />
-        <ComponentEntry AppName="BleachRoSImport" Version="1.1.0" ModuleName="./Contents/2027/BleachRoSImport.dlu"
+        <ComponentEntry AppName="BleachRoSImport" Version="1.1.1" ModuleName="./Contents/2027/BleachRoSImport.dlu"
                         AppDescription="BLEACH Rebirth of Souls importer" />
     </Components>
 
     <Components Description="macroscripts parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2016" SeriesMax="2027" />
-        <ComponentEntry AppName="BleachImportMacro" Version="1.1.0" ModuleName="./Contents/MacroScripts/BleachImport.mcr"
+        <ComponentEntry AppName="BleachImportMacro" Version="1.1.1" ModuleName="./Contents/MacroScripts/BleachImport.mcr"
                         AppDescription="Bleach Tool macros" />
     </Components>
 
     <Components Description="post-start-up scripts parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2016" SeriesMax="2024" />
-        <ComponentEntry AppName="BleachMenuLegacy" Version="1.1.0" ModuleName="./Contents/Post-Start-Up_Scripts/BleachMenu_2016_2024.ms"
+        <ComponentEntry AppName="BleachMenuLegacy" Version="1.1.1" ModuleName="./Contents/Post-Start-Up_Scripts/BleachMenu_2016_2024.ms"
                         AppDescription="Bleach Tool menu (menuMan)" />
     </Components>
 
     <Components Description="pre-start-up scripts parts">
         <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2025" SeriesMax="2027" />
-        <ComponentEntry AppName="BleachMenu" Version="1.1.0" ModuleName="./Contents/Pre-Start-Up_Scripts/BleachMenu_2025_2027.ms"
+        <ComponentEntry AppName="BleachMenu" Version="1.1.1" ModuleName="./Contents/Pre-Start-Up_Scripts/BleachMenu_2025_2027.ms"
                         AppDescription="Bleach Tool menu (CuiMenuManager)" />
     </Components>
 </ApplicationPackage>

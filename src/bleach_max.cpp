@@ -186,7 +186,7 @@ bool WriteFileW(const std::wstring& p, const std::vector<uint8_t>& d) {
 }
 
 // .lds рядом с .tmd2 -> DDS в кэше; ключ - индекс в .lds
-std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& charId) {
+std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& charId, const std::string& suffix) {
     std::map<int, TexInfo> out;
     std::string lds = t.path;
     const size_t dot = lds.find_last_of('.');
@@ -204,7 +204,7 @@ std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& cha
     CreateDirectoryW(dir.c_str(), nullptr);
 #endif
     for (size_t i = 0; i < l.textures.size(); ++i) {
-        const std::wstring p = dir + L"\\" + Wide(t.name) + L"_" + std::to_wstring(i) + L".dds";
+        const std::wstring p = dir + L"\\" + Wide(t.name + suffix) + L"_" + std::to_wstring(i) + L".dds";
         if (!WriteFileW(p, l.textures[i])) {
             Log("  [!] не записать %s", Utf8(p).c_str());
             continue;
@@ -453,7 +453,8 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         for (size_t pi = 0; pi < parts.size(); ++pi) {
             const tam::Tmd2& t = *parts[pi].tmd;
             const ImportItem& item = itemOf[&t];
-            const std::map<int, TexInfo> tex = o.textures ? ExportTextures(t, charId) : std::map<int, TexInfo>();
+            const std::map<int, TexInfo> tex =
+                o.textures ? ExportTextures(t, charId, item.lod > 0 ? "_" + item.lodName : std::string()) : std::map<int, TexInfo>();
             std::vector<tam::PartMesh> meshes;
             tam::BuildMeshes(parts, static_cast<int>(pi), skel, bo, meshes);
             for (tam::PartMesh& pm : meshes) {
@@ -593,6 +594,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
                     Log("  %s: вершин %zu, граней %zu (без Skin)", nodeName.c_str(), nv, nf);
                 }
                 if (pm.degenerate) Log("  %s: пропущено вырожденных граней %zu", nodeName.c_str(), pm.degenerate);
+                if (!pm.note.empty()) Log("  %s: %s", nodeName.c_str(), pm.note.c_str());
                 ++meshCount;
                 vertTotal += nv;
                 faceTotal += nf;
