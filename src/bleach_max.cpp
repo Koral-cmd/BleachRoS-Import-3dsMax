@@ -903,6 +903,15 @@ struct SeqBlock {
 
 std::string LowerW(const MCHAR* s) { return s ? Lower(FromMax(s)) : std::string(); }
 
+// CustAttrib::GetName: с Max 2022 обязателен аргумент localized
+const MCHAR* CaName(CustAttrib* ca) {
+#if MAX_RELEASE >= 24000
+    return ca->GetName(false);
+#else
+    return ca->GetName();
+#endif
+}
+
 std::vector<SeqBlock> FindSeqBlocks() {
     std::vector<SeqBlock> r;
     Interface* ip = GetCOREInterface();
@@ -931,7 +940,7 @@ std::vector<SeqBlock> FindSeqBlocks() {
                 else if (n == "sharedgroup") sb.group = id;
             }
             if (sb.names < 0 || sb.starts < 0 || sb.ends < 0) continue;
-            sb.wdx = LowerW(ca->GetName()) == "whiteoutdexsequencedata";
+            sb.wdx = LowerW(CaName(ca)) == "whiteoutdexsequencedata";
             r.push_back(sb);
         }
     }
@@ -1026,7 +1035,7 @@ bool PublishSequences(const std::vector<Loaded>& clips) {
         LoadedToNotes(root, clips);
     }
     std::string where;
-    for (const SeqBlock& b : bl) where += std::string(where.empty() ? "" : ", ") + FromMax(b.ca->GetName());
+    for (const SeqBlock& b : bl) where += std::string(where.empty() ? "" : ", ") + FromMax(CaName(b.ca));
     Log(TR("  последовательностей %zu -> %s"), clips.size(), ok ? where.c_str() : TR("note track на rootNode"));
     if (!bl.empty() && !ok) Log("%s", TR("  [!] блок последовательностей не принял запись - список ведёт плагин"));
     return ok || bl.empty();
