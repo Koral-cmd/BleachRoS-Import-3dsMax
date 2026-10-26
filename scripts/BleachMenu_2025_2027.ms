@@ -22,9 +22,9 @@
           mnu.CreateAction sOpenGuid 647394 "BleachImport_Open`Bleach Tool"
           mnu.CreateAction sAnimGuid 647394 "BleachImport_Anim`Bleach Tool"
         )
-        else format "[Bleach Tool] CreateSubMenu вернул undefined (GUID занят?)\n"
+        else format "[Bleach Tool] CreateSubMenu returned undefined (GUID taken?)\n"
       )
-      catch (format "[Bleach Tool] меню не создано: %\n" (getCurrentException()))
+      catch (format "[Bleach Tool] menu not created: %\n" (getCurrentException()))
     )
   )
   callbacks.removeScripts id:#bleachImportMenu

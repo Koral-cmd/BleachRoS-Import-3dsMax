@@ -1,6 +1,7 @@
 // ============================================================
 //  tam_assemble.cpp - см. tam_assemble.h
 // ============================================================
+#include "lang.h"
 #include "tam_assemble.h"
 
 #include <algorithm>
@@ -149,7 +150,7 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
         std::vector<M4> worlds(t.bones.size());
         for (size_t i = 0; i < t.bones.size(); ++i) {
             if (!Inverse(t.bones[i].invBind, worlds[i]))
-                log.push_back(Format("  [!] %s: вырожденная bind-матрица у кости %s", t.name.c_str(), t.bones[i].name.c_str()));
+                log.push_back(Format(TR("  [!] %s: вырожденная bind-матрица у кости %s"), t.name.c_str(), t.bones[i].name.c_str()));
         }
 
         // ---- переход части на скелет по общим костям ----
@@ -173,14 +174,14 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
             if (d < anchorDepth) { anchorDepth = d; anchor = static_cast<int>(i); }
         }
         if (shared && p.corrMax > 1e-3)
-            log.push_back(Format("  %s: общие кости (%zu) стоят в файле иначе, чем на скелете (до %.3f) -> часть перенесена на скелет",
+            log.push_back(Format(TR("  %s: общие кости (%zu) стоят в файле иначе, чем на скелете (до %.3f) -> часть перенесена на скелет"),
                                  t.name.c_str(), shared, p.corrMax));
 
         if (!skel.bones.empty() && shared == 0 && opt.attachBone != "none") {
             int ai = -1;
             if (!opt.attachBone.empty() && opt.attachBone != "auto") {
                 ai = skel.FindByName(opt.attachBone);
-                if (ai < 0) log.push_back(Format("  [!] кость '%s' не найдена - %s не прицеплен", opt.attachBone.c_str(), t.name.c_str()));
+                if (ai < 0) log.push_back(Format(TR("  [!] кость '%s' не найдена - %s не прицеплен"), opt.attachBone.c_str(), t.name.c_str()));
             } else {
                 ai = skel.GuessAttachBone();
             }
@@ -189,10 +190,10 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
                 p.attachMatrix = skel.bones[static_cast<size_t>(ai)].bindWorld;
                 for (size_t i = 0; i < n; ++i) { p.boneCorr[i] = p.attachMatrix; hasCorr[i] = 1; }
                 p.corrMax = MaxAbsDiff(p.attachMatrix, Ident());
-                log.push_back(Format("  %s: общих костей нет -> прицеплен к '%s'", t.name.c_str(),
+                log.push_back(Format(TR("  %s: общих костей нет -> прицеплен к '%s'"), t.name.c_str(),
                                      skel.bones[static_cast<size_t>(ai)].name.c_str()));
             } else {
-                log.push_back(Format("  %s: общих костей нет, кость для прицепления не найдена - остаётся в начале координат",
+                log.push_back(Format(TR("  %s: общих костей нет, кость для прицепления не найдена - остаётся в начале координат"),
                                      t.name.c_str()));
             }
         }
@@ -231,7 +232,7 @@ void BuildSkeleton(std::vector<Part>& parts, Skeleton& skel, const BuildOptions&
         if (ai >= 0) {
             p.staticParent = ai;
             p.attachMatrix = skel.bones[static_cast<size_t>(ai)].bindWorld;
-            log.push_back(Format("  %s: статичный меш прицеплен к '%s'", p.tmd->name.c_str(),
+            log.push_back(Format(TR("  %s: статичный меш прицеплен к '%s'"), p.tmd->name.c_str(),
                                  skel.bones[static_cast<size_t>(ai)].name.c_str()));
         }
     }
@@ -296,7 +297,7 @@ int DetectVertexSpace(const Part& p, const Skeleton& skel, std::string& note) {
     const double height = std::max(1e-6, hi - lo);
     const double m0 = Median(d0), m1 = Median(d1);
     char buf[200];
-    std::snprintf(buf, sizeof buf, "до кости: как в файле %.3f, как локальные %.3f (высота скелета %.3f)", m0, m1, height);
+    std::snprintf(buf, sizeof buf, TR("до кости: как в файле %.3f, как локальные %.3f (высота скелета %.3f)"), m0, m1, height);
     note = buf;
     return (m1 < 0.25 * m0 && m0 > 0.08 * height) ? 1 : 0;
 }
@@ -324,8 +325,8 @@ void BuildMeshes(const std::vector<Part>& parts, int partIndex, const Skeleton& 
         PartMesh pm;
         pm.name = model.name;
         pm.part = partIndex;
-        if (space == 1) pm.note = "вершины в локальных координатах костей (" + spaceNote + ")";
-        else if (p.corrMax > 1e-3) pm.note = "перенесено на скелет (" + spaceNote + ")";
+        if (space == 1) pm.note = TR("вершины в локальных координатах костей (") + spaceNote + ")";
+        else if (p.corrMax > 1e-3) pm.note = TR("перенесено на скелет (") + spaceNote + ")";
         pm.skinned = skinned;
         pm.staticParent = p.staticParent;
         // скелет есть, а весов нет (жёсткое оружие/аксессуар) - вешаем на первую кость части

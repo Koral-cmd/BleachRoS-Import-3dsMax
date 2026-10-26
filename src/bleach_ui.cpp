@@ -40,6 +40,7 @@ namespace {
 //  Общее
 // ------------------------------------------------------------
 GameIndex g_index;                 // общий для обоих окон
+const INT_PTR kRelaunch = 77;      // EndDialog: открыть окно моделей заново (смена языка)
 bool g_indexValid = false;
 
 void SetText(HWND dlg, int id, const std::string& s) { SetDlgItemTextW(dlg, id, Wide(s).c_str()); }
@@ -78,7 +79,7 @@ bool PickFolder(HWND owner, std::string& out) {
     DWORD o = 0;
     d->GetOptions(&o);
     d->SetOptions(o | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-    d->SetTitle(L"Папка BLEACH Rebirth of Souls");
+    d->SetTitle(Wide(TR("Папка BLEACH Rebirth of Souls")).c_str());
     bool ok = false;
     if (SUCCEEDED(d->Show(owner))) {
         IShellItem* it = nullptr;
@@ -94,6 +95,20 @@ bool PickFolder(HWND owner, std::string& out) {
     }
     d->Release();
     return ok;
+}
+
+// Фильтр окна выбора файла: "описание\0маска\0Все файлы\0*.*\0\0"
+std::wstring Filter(const char* desc, const wchar_t* mask) {
+    std::wstring f = Wide(desc);
+    f.push_back(L'\0');
+    f += mask;
+    f.push_back(L'\0');
+    f += Wide(TR("Все файлы"));
+    f.push_back(L'\0');
+    f += L"*.*";
+    f.push_back(L'\0');
+    f.push_back(L'\0');
+    return f;
 }
 
 bool PickFile(HWND owner, const wchar_t* filter, const wchar_t* title, std::string& out) {
@@ -119,12 +134,12 @@ struct WaitCursor {
 
 bool EnsureIndex(Settings& st, bool force, std::string& err) {
     const std::string root = st.Get("game_folder");
-    if (root.empty()) { err = "Папка игры не задана"; return false; }
+    if (root.empty()) { err = TR("Папка игры не задана"); return false; }
     if (g_indexValid && !force && g_index.root == root) return true;
     WaitCursor wc;
     g_indexValid = ScanGame(root, g_index, err);
     if (g_indexValid)
-        Log("Скан игры: %s - файлов %zu, персонажей %zu, пакетов анимаций %zu", root.c_str(), g_index.scanned,
+        Log(TR("Скан игры: %s - файлов %zu, персонажей %zu, пакетов анимаций %zu"), root.c_str(), g_index.scanned,
             g_index.chars.size(), g_index.motions.size());
     return g_indexValid;
 }
@@ -164,7 +179,7 @@ void FillChars(HWND dlg, ModelState& s) {
         SendMessageW(lb, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(line).c_str()));
     }
     char t[160];
-    std::snprintf(t, sizeof t, "Персонажей: %zu, пакетов анимаций: %zu", s.charIds.size(), g_index.motions.size());
+    std::snprintf(t, sizeof t, TR("Персонажей: %zu, пакетов анимаций: %zu"), s.charIds.size(), g_index.motions.size());
     SetText(dlg, IDC_M_STATUS, t);
 }
 
@@ -234,7 +249,7 @@ void FillParts(HWND dlg, ModelState& s) {
         }
     }
     for (size_t i = 0; i < s.extraFiles.size(); ++i) {
-        std::wstring stem = Wide(tam::FileStem(s.extraFiles[i])), kind = L"файл", lod = L"-", sz = L"";
+        std::wstring stem = Wide(tam::FileStem(s.extraFiles[i])), kind = Wide(TR("файл")), lod = L"-", sz = L"";
         LVITEMW it{};
         it.mask = LVIF_TEXT | LVIF_PARAM;
         it.iItem = row;
@@ -256,13 +271,13 @@ void FillParts(HWND dlg, ModelState& s) {
         }
         char t[300];
         if (realLod > 0)
-            std::snprintf(t, sizeof t, "%s: частей %zu. Настоящий LOD (меньше треугольников): %d, одинаковая геометрия: %d", ch->id.c_str(),
+            std::snprintf(t, sizeof t, TR("%s: частей %zu. Настоящий LOD (меньше треугольников): %d, одинаковая геометрия: %d"), ch->id.c_str(),
                           ch->parts.size(), realLod, sameLod);
         else if (sameLod > 0)
-            std::snprintf(t, sizeof t, "%s: частей %zu. LOD нет: в %d частях папки качества с той же геометрией (=)", ch->id.c_str(),
+            std::snprintf(t, sizeof t, TR("%s: частей %zu. LOD нет: в %d частях папки качества с той же геометрией (=)"), ch->id.c_str(),
                           ch->parts.size(), sameLod);
         else
-            std::snprintf(t, sizeof t, "%s: частей %zu, LOD нет", ch->id.c_str(), ch->parts.size());
+            std::snprintf(t, sizeof t, TR("%s: частей %zu, LOD нет"), ch->id.c_str(), ch->parts.size());
         SetText(dlg, IDC_M_STATUS, t);
     }
 }
@@ -281,9 +296,9 @@ void LoadOptions(HWND dlg, const Settings& st) {
     Check(dlg, IDC_M_ALPHA, st.GetInt("alpha", 0) != 0);
     Check(dlg, IDC_M_LODS, st.GetInt("lods", 0) != 0);
     ComboFill(dlg, IDC_M_BONESTYLE, { "Bone", "Point" }, st.GetInt("bonestyle", 0));
-    ComboFill(dlg, IDC_M_UNITS, { "Авто", "Метры", "Сантиметры" }, st.GetInt("gameunits", 0));
-    ComboFill(dlg, IDC_M_SCALE, { "Системные единицы", "1 м = 39.37", "1 м = 100", "1 м = 1" }, st.GetInt("scale", 0));
-    ComboFill(dlg, IDC_M_QUALITY, { "00HIGH (основной)", "01MIDDLE", "02LOW" }, st.GetInt("quality", 0));
+    ComboFill(dlg, IDC_M_UNITS, { TR("Авто"), TR("Метры"), TR("Сантиметры") }, st.GetInt("gameunits", 0));
+    ComboFill(dlg, IDC_M_SCALE, { TR("Системные единицы"), TR("1 м = 39.37"), TR("1 м = 100"), TR("1 м = 1") }, st.GetInt("scale", 0));
+    ComboFill(dlg, IDC_M_QUALITY, { TR("00HIGH (основной)"), "01MIDDLE", "02LOW" }, st.GetInt("quality", 0));
     HWND a = GetDlgItem(dlg, IDC_M_ATTACH);
     SendMessageW(a, CB_RESETCONTENT, 0, 0);
     SendMessageW(a, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"auto"));
@@ -380,21 +395,21 @@ void DoImport(HWND dlg, ModelState& s) {
         }
     }
     if (items.empty()) {
-        SetText(dlg, IDC_M_STATUS, "Ничего не отмечено");
+        SetText(dlg, IDC_M_STATUS, TR("Ничего не отмечено"));
         return;
     }
     std::string report;
     bool ok = false;
     {
         WaitCursor wc;
-        SetText(dlg, IDC_M_STATUS, "Импорт...");
+        SetText(dlg, IDC_M_STATUS, TR("Импорт..."));
         UpdateWindow(dlg);
         ok = s.bridge->importModels && s.bridge->importModels(items, o, report);
     }
     if (lodSame > 0)
-        report += "\n\nLOD пропущено: " + std::to_string(lodSame) +
-                  " (в папке другого качества та же геометрия - отличаются только текстуры)";
-    SetText(dlg, IDC_M_STATUS, ok ? "Готово. Подробности: Downloads\\Import bleach.log" : "Ошибка - см. лог");
+        report += TR("\n\nLOD пропущено: ") + std::to_string(lodSame) +
+                  TR(" (в папке другого качества та же геометрия - отличаются только текстуры)");
+    SetText(dlg, IDC_M_STATUS, ok ? TR("Готово. Подробности: Downloads\\Import bleach.log") : TR("Ошибка - см. лог"));
     MessageBoxW(dlg, Wide(report).c_str(), L"BLEACH RoS Import", ok ? MB_ICONINFORMATION : MB_ICONERROR);
 }
 
@@ -404,39 +419,40 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_INITDIALOG: {
         s = reinterpret_cast<ModelState*>(lp);
         SetWindowLongPtrW(dlg, DWLP_USER, reinterpret_cast<LONG_PTR>(s));
-        SetWindowTextW(dlg, L"BLEACH Rebirth of Souls - импорт модели");
-        SetText(dlg, IDC_M_FOLDER_LBL, "Папка игры");
-        SetText(dlg, IDC_M_BROWSE, "Обзор...");
-        SetText(dlg, IDC_M_FIND, "Найти в Steam");
-        SetText(dlg, IDC_M_QUAL_LBL, "Качество");
-        SetText(dlg, IDC_M_SEARCH_LBL, "Поиск");
-        SetText(dlg, IDC_M_RESCAN, "Обновить");
-        SetText(dlg, IDC_M_ADDFILE, "Добавить .tmd2...");
-        SetText(dlg, IDC_M_ALL, "Все");
-        SetText(dlg, IDC_M_NONE, "Снять все");
-        SetText(dlg, IDC_M_OPTGROUP, "Параметры");
-        SetText(dlg, IDC_M_TEX, "Текстуры");
-        SetText(dlg, IDC_M_VCOL, "Цвет вершин");
-        SetText(dlg, IDC_M_WELD, "Сварить швы");
-        SetText(dlg, IDC_M_SKIN, "Skin (веса)");
-        SetText(dlg, IDC_M_ALPHA, "Альфа -> прозрачность");
-        SetText(dlg, IDC_M_LODS, "Импортировать LOD (слои)");
-        SetText(dlg, IDC_M_BONE_LBL, "Кости");
-        SetText(dlg, IDC_M_UNITS_LBL, "Ед. игры");
-        SetText(dlg, IDC_M_SCALE_LBL, "Масштаб");
-        SetText(dlg, IDC_M_ATTACH_LBL, "Кость для оружия");
-        SetText(dlg, IDC_M_ANIMS, "Анимации...");
-        SetText(dlg, IDOK, "Импорт");
-        SetText(dlg, IDCANCEL, "Закрыть");
+        SetWindowTextW(dlg, Wide(TR("BLEACH Rebirth of Souls - импорт модели")).c_str());
+        SetText(dlg, IDC_M_FOLDER_LBL, TR("Папка игры"));
+        SetText(dlg, IDC_M_BROWSE, TR("Обзор..."));
+        SetText(dlg, IDC_M_FIND, TR("Найти в Steam"));
+        SetText(dlg, IDC_M_QUAL_LBL, TR("Качество"));
+        SetText(dlg, IDC_M_SEARCH_LBL, TR("Поиск"));
+        SetText(dlg, IDC_M_RESCAN, TR("Обновить"));
+        ComboFill(dlg, IDC_M_LANG, { "Language: Auto", "Русский", "English" }, s->st.GetInt("lang", 0));
+        SetText(dlg, IDC_M_ADDFILE, TR("Добавить .tmd2..."));
+        SetText(dlg, IDC_M_ALL, TR("Все"));
+        SetText(dlg, IDC_M_NONE, TR("Снять все"));
+        SetText(dlg, IDC_M_OPTGROUP, TR("Параметры"));
+        SetText(dlg, IDC_M_TEX, TR("Текстуры"));
+        SetText(dlg, IDC_M_VCOL, TR("Цвет вершин"));
+        SetText(dlg, IDC_M_WELD, TR("Сварить швы"));
+        SetText(dlg, IDC_M_SKIN, TR("Skin (веса)"));
+        SetText(dlg, IDC_M_ALPHA, TR("Альфа -> прозрачность"));
+        SetText(dlg, IDC_M_LODS, TR("Импортировать LOD (слои)"));
+        SetText(dlg, IDC_M_BONE_LBL, TR("Кости"));
+        SetText(dlg, IDC_M_UNITS_LBL, TR("Ед. игры"));
+        SetText(dlg, IDC_M_SCALE_LBL, TR("Масштаб"));
+        SetText(dlg, IDC_M_ATTACH_LBL, TR("Кость для оружия"));
+        SetText(dlg, IDC_M_ANIMS, TR("Анимации..."));
+        SetText(dlg, IDOK, TR("Импорт"));
+        SetText(dlg, IDCANCEL, TR("Закрыть"));
 
         HWND lv = GetDlgItem(dlg, IDC_M_PARTS);
         ListView_SetExtendedListViewStyle(lv, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-        const wchar_t* cols[] = { L"Часть", L"Тип", L"LOD (треугольники)", L"Размер" };
+        const std::wstring cols[] = { Wide(TR("Часть")), Wide(TR("Тип")), Wide(TR("LOD (треугольники)")), Wide(TR("Размер")) };
         const int widths[] = { 175, 45, 160, 60 };
         for (int i = 0; i < 4; ++i) {
             LVCOLUMNW c{};
             c.mask = LVCF_TEXT | LVCF_WIDTH;
-            c.pszText = const_cast<wchar_t*>(cols[i]);
+            c.pszText = const_cast<wchar_t*>(cols[i].c_str());
             c.cx = widths[i];
             SendMessageW(lv, LVM_INSERTCOLUMNW, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&c));
         }
@@ -462,7 +478,7 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             Rescan(dlg, *s, false);
             SelectChar(dlg, *s, s->st.Get("last_char"));
         } else {
-            SetText(dlg, IDC_M_STATUS, "Укажи папку игры (Обзор...)");
+            SetText(dlg, IDC_M_STATUS, TR("Укажи папку игры (Обзор...)"));
         }
         return TRUE;
     }
@@ -481,7 +497,7 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case IDC_M_FIND: {
             const std::string g = FindGameFolder();
-            if (g.empty()) SetText(dlg, IDC_M_STATUS, "Игра в библиотеках Steam не найдена - укажи папку вручную");
+            if (g.empty()) SetText(dlg, IDC_M_STATUS, TR("Игра в библиотеках Steam не найдена - укажи папку вручную"));
             else {
                 s->st.Set("game_folder", g);
                 s->st.Save();
@@ -510,12 +526,21 @@ INT_PTR CALLBACK ModelProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         case IDC_M_ADDFILE: {
             std::string f;
-            if (PickFile(dlg, L"Модели TamEngine (*.tmd2)\0*.tmd2\0Все файлы\0*.*\0", L"Добавить .tmd2", f)) {
+            if (PickFile(dlg, Filter(TR("Модели TamEngine (*.tmd2)"), L"*.tmd2").c_str(), Wide(TR("Добавить .tmd2")).c_str(), f)) {
                 s->extraFiles.push_back(f);
                 FillParts(dlg, *s);
             }
             return TRUE;
         }
+        case IDC_M_LANG:
+            if (code == CBN_SELCHANGE) {
+                ReadOptions(dlg, s->st);
+                s->st.SetInt("lang", std::max(0, ComboSel(dlg, IDC_M_LANG)));
+                s->st.Save();
+                i18n::SetLang(i18n::FromSetting(s->st.GetInt("lang", 0)));
+                EndDialog(dlg, kRelaunch);   // открыть окно заново уже на новом языке
+            }
+            return TRUE;
         case IDC_M_ALL: SetAllChecks(dlg, true); return TRUE;
         case IDC_M_NONE: SetAllChecks(dlg, false); return TRUE;
         case IDC_M_ANIMS: {
@@ -614,7 +639,7 @@ void FillSequences(HWND dlg, AnimState& s, int select = -1) {
     }
     if (select >= 0 && select < static_cast<int>(s.seqs.size())) SendMessageW(lb, LB_SETCURSEL, static_cast<WPARAM>(select), 0);
     char t[200];
-    std::snprintf(t, sizeof t, "Клипов: %zu. Это же - Sequences в WhiteoutDex (двойной щелчок - проиграть)", s.seqs.size());
+    std::snprintf(t, sizeof t, TR("Клипов: %zu. Это же - Sequences в WhiteoutDex (двойной щелчок - проиграть)"), s.seqs.size());
     SetText(dlg, IDC_A_SEQ_LBL, t);
 }
 
@@ -627,7 +652,7 @@ void SeqSelected(HWND dlg, AnimState& s) {
 
 void PlaySeq(HWND dlg, AnimState& s) {
     const int i = SelectedSeq(dlg, s);
-    if (i < 0) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    if (i < 0) { SetText(dlg, IDC_A_STATUS, TR("Выбери загруженный клип")); return; }
     if (s.bridge.showRange) s.bridge.showRange(s.seqs[static_cast<size_t>(i)].start, s.seqs[static_cast<size_t>(i)].end);
 }
 
@@ -635,12 +660,12 @@ void FullTimeline(HWND dlg, AnimState& s) {
     int end = 1;
     for (const SequenceInfo& q : s.seqs) end = std::max(end, q.end);
     if (s.bridge.showRange) s.bridge.showRange(0, end);
-    SetText(dlg, IDC_A_STATUS, "Таймлайн 0-" + std::to_string(end));
+    SetText(dlg, IDC_A_STATUS, TR("Таймлайн 0-") + std::to_string(end));
 }
 
 void DeleteSeq(HWND dlg, AnimState& s) {
     const int i = SelectedSeq(dlg, s);
-    if (i < 0 || !s.bridge.deleteSequence) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    if (i < 0 || !s.bridge.deleteSequence) { SetText(dlg, IDC_A_STATUS, TR("Выбери загруженный клип")); return; }
     std::string rep;
     s.bridge.deleteSequence(CurrentRig(dlg, s), static_cast<size_t>(i), rep);
     SetText(dlg, IDC_A_STATUS, rep);
@@ -649,7 +674,7 @@ void DeleteSeq(HWND dlg, AnimState& s) {
 
 void RenameSeq(HWND dlg, AnimState& s) {
     const int i = SelectedSeq(dlg, s);
-    if (i < 0 || !s.bridge.renameSequence) { SetText(dlg, IDC_A_STATUS, "Выбери загруженный клип"); return; }
+    if (i < 0 || !s.bridge.renameSequence) { SetText(dlg, IDC_A_STATUS, TR("Выбери загруженный клип")); return; }
     std::string rep;
     s.bridge.renameSequence(CurrentRig(dlg, s), static_cast<size_t>(i), GetText(dlg, IDC_A_NAME), Checked(dlg, IDC_A_NONLOOP), rep);
     SetText(dlg, IDC_A_STATUS, rep);
@@ -695,16 +720,16 @@ void FillClips(HWND dlg, AnimState& s) {
         if (fitOnly && !ok) continue;
         char t[300];
         if (!s.rigHash.empty() && i < s.clipMatch.size() && s.clipMatch[i] >= 0)
-            std::snprintf(t, sizeof t, "%s %s   (%d кадр., костей %d/%d)", ok ? "+" : "-", c.name.c_str(), c.frames,
+            std::snprintf(t, sizeof t, TR("%s %s   (%d кадр., костей %d/%d)"), ok ? "+" : "-", c.name.c_str(), c.frames,
                           s.clipMatch[i], c.bones);
         else
-            std::snprintf(t, sizeof t, "%s   (%d кадр., %d кост.)", c.name.c_str(), c.frames, c.bones);
+            std::snprintf(t, sizeof t, TR("%s   (%d кадр., %d кост.)"), c.name.c_str(), c.frames, c.bones);
         SendMessageW(lb, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Wide(t).c_str()));
         s.shown.push_back(i);
     }
     char t[120];
-    if (!s.rigHash.empty()) std::snprintf(t, sizeof t, "%zu из %zu, подходят %zu", s.shown.size(), s.pkg->clips.size(), fits);
-    else std::snprintf(t, sizeof t, "%zu из %zu", s.shown.size(), s.pkg->clips.size());
+    if (!s.rigHash.empty()) std::snprintf(t, sizeof t, TR("%zu из %zu, подходят %zu"), s.shown.size(), s.pkg->clips.size(), fits);
+    else std::snprintf(t, sizeof t, TR("%zu из %zu"), s.shown.size(), s.pkg->clips.size());
     SetText(dlg, IDC_A_COUNT, t);
 }
 
@@ -717,18 +742,18 @@ void OpenPack(HWND dlg, AnimState& s, const std::string& path) {
     const bool object = path == kObjectPack;
     const bool ok = object ? tam::LoadTactMany(s.objectFiles, CurrentRigChar(dlg, s), *p, err) : tam::LoadTact(path, *p, err);
     Check(dlg, IDC_A_TOGETHER, object);
-    if (object && !err.empty()) Log("Клипы объекта: %s", err.c_str());
+    if (object && !err.empty()) Log(TR("Клипы объекта: %s"), err.c_str());
     if (!ok) {
         s.pkg.reset();
         s.pkgPath.clear();
-        SetText(dlg, IDC_A_STATUS, "Не открылся: " + err);
-        Log("Пакет %s не открылся: %s", path.c_str(), err.c_str());
+        SetText(dlg, IDC_A_STATUS, TR("Не открылся: ") + err);
+        Log(TR("Пакет %s не открылся: %s"), path.c_str(), err.c_str());
         FillClips(dlg, s);
         return;
     }
-    Log("Пакет %s (%s): клипов %zu", path.c_str(), p->container.c_str(), p->clips.size());
-    for (const std::string& o : p->other) Log("  прочее: %s", o.c_str());
-    for (const tam::SubEntry& e : p->extras) Log("  %s: %s/%s (%zu байт)", e.type.c_str(), e.where.c_str(), e.name.c_str(), e.size);
+    Log(TR("Пакет %s (%s): клипов %zu"), path.c_str(), p->container.c_str(), p->clips.size());
+    for (const std::string& o : p->other) Log(TR("  прочее: %s"), o.c_str());
+    for (const tam::SubEntry& e : p->extras) Log(TR("  %s: %s/%s (%zu байт)"), e.type.c_str(), e.where.c_str(), e.name.c_str(), e.size);
     s.pkg = std::move(p);
     s.pkgPath = path;
     if (!object) {
@@ -737,10 +762,10 @@ void OpenPack(HWND dlg, AnimState& s, const std::string& path) {
     }
     ComputeMatches(s);
     FillClips(dlg, s);
-    std::string msg = "Клипов: " + std::to_string(s.pkg->clips.size());
-    if (object) msg += " из " + std::to_string(s.objectFiles.size()) + " файлов - \"Все из пакета\" загрузит их одновременно, одной последовательностью";
+    std::string msg = TR("Клипов: ") + std::to_string(s.pkg->clips.size());
+    if (object) msg += TR(" из ") + std::to_string(s.objectFiles.size()) + TR(" файлов - \"Все из пакета\" загрузит их одновременно, одной последовательностью");
     if (s.pkg->clips.empty() && !s.pkg->extras.empty())
-        msg += ". Здесь только эффекты/материалы (" + std::to_string(s.pkg->extras.size()) + ", см. лог) - их пока не читаю";
+        msg += TR(". Здесь только эффекты/материалы (") + std::to_string(s.pkg->extras.size()) + TR(", см. лог) - их пока не читаю");
     SetText(dlg, IDC_A_STATUS, msg);
 }
 
@@ -775,7 +800,7 @@ void FillPacks(HWND dlg, AnimState& s, const std::string& prefer) {
     int sel = s.packs.empty() ? -1 : 0;
     for (size_t i = 0; i < s.packs.size(); ++i) {
         if (s.packs[i] == kObjectPack) {
-            names.push_back(CurrentRigChar(dlg, s) + ": все клипы объекта вместе (" + std::to_string(s.objectFiles.size()) + " файлов)");
+            names.push_back(CurrentRigChar(dlg, s) + TR(": все клипы объекта вместе (") + std::to_string(s.objectFiles.size()) + TR(" файлов)"));
             continue;
         }
         const auto fn = s.foundNote.find(s.packs[i]);
@@ -799,7 +824,7 @@ void FillRigs(HWND dlg, AnimState& s) {
         names.push_back(n);
         if (s.rigs[i].handle == selRig) sel = static_cast<int>(i);
     }
-    if (s.rigs.empty()) names.push_back("(в сцене нет скелета - сначала импортируй модель)");
+    if (s.rigs.empty()) names.push_back(TR("(в сцене нет скелета - сначала импортируй модель)"));
     ComboFill(dlg, IDC_A_RIG, names, s.rigs.empty() ? 0 : sel);
 }
 
@@ -824,15 +849,15 @@ AnimOptions ReadAnimOptions(HWND dlg, Settings& st) {
 void ApplySelected(HWND dlg, AnimState& s, bool all) {
     const int r = ComboSel(dlg, IDC_A_RIG);
     if (r < 0 || r >= static_cast<int>(s.rigs.size())) {
-        SetText(dlg, IDC_A_STATUS, "Нет скелета в сцене");
+        SetText(dlg, IDC_A_STATUS, TR("Нет скелета в сцене"));
         return;
     }
     if (!s.pkg) {
-        SetText(dlg, IDC_A_STATUS, "Пакет анимаций не открыт");
+        SetText(dlg, IDC_A_STATUS, TR("Пакет анимаций не открыт"));
         return;
     }
     if (Checked(dlg, IDC_A_APPEND) && !s.seqs.empty() &&
-        MessageBoxW(dlg, Wide("Удалить уже загруженные клипы (" + std::to_string(s.seqs.size()) + ") перед загрузкой?").c_str(),
+        MessageBoxW(dlg, Wide(TR("Удалить уже загруженные клипы (") + std::to_string(s.seqs.size()) + TR(") перед загрузкой?")).c_str(),
                     L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
         return;
     std::vector<size_t> clips;
@@ -849,7 +874,7 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
         }
     }
     if (clips.empty()) {
-        SetText(dlg, IDC_A_STATUS, "Выбери клип(ы)");
+        SetText(dlg, IDC_A_STATUS, TR("Выбери клип(ы)"));
         return;
     }
     AnimOptions o = ReadAnimOptions(dlg, s.st);
@@ -859,13 +884,13 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
     bool ok = false;
     {
         WaitCursor wc;
-        SetText(dlg, IDC_A_STATUS, "Загрузка...");
+        SetText(dlg, IDC_A_STATUS, TR("Загрузка..."));
         UpdateWindow(dlg);
         ok = s.bridge.applyClips && s.bridge.applyClips(s.rigs[static_cast<size_t>(r)].handle, *s.pkg, clips, o, report);
     }
     SetText(dlg, IDC_A_STATUS, report);
     FillSequences(dlg, s);
-    if (!ok) MessageBoxW(dlg, Wide(report).c_str(), L"BLEACH RoS - анимации", MB_ICONWARNING);
+    if (!ok) MessageBoxW(dlg, Wide(report).c_str(), Wide(TR("BLEACH RoS - анимации")).c_str(), MB_ICONWARNING);
 }
 
 // Все клипы всех пакетов персонажа подряд. Неподходящие к скелету клипы
@@ -873,7 +898,7 @@ void ApplySelected(HWND dlg, AnimState& s, bool all) {
 // загруженный) пропускаются.
 void LoadCharacterAll(HWND dlg, AnimState& s) {
     const unsigned long rig = CurrentRig(dlg, s);
-    if (rig == 0) { SetText(dlg, IDC_A_STATUS, "Нет скелета в сцене"); return; }
+    if (rig == 0) { SetText(dlg, IDC_A_STATUS, TR("Нет скелета в сцене")); return; }
     if (!s.bridge.applyClips) return;
     const std::string charId = CurrentRigChar(dlg, s);
     std::vector<std::string> packs;
@@ -891,9 +916,9 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
         if (singles.size() >= 2 && singles.size() == packs.size()) {
             tam::TactPkg pk;
             std::string e;
-            if (!tam::LoadTactMany(singles, charId, pk, e)) { SetText(dlg, IDC_A_STATUS, "Клипы объекта не читаются: " + e); return; }
-            if (MessageBoxW(dlg, Wide("Загрузить анимацию объекта " + charId + ": " + std::to_string(pk.clips.size()) +
-                                      " клипа(ов) из " + std::to_string(singles.size()) + " файлов одновременно, одной последовательностью?").c_str(),
+            if (!tam::LoadTactMany(singles, charId, pk, e)) { SetText(dlg, IDC_A_STATUS, TR("Клипы объекта не читаются: ") + e); return; }
+            if (MessageBoxW(dlg, Wide(TR("Загрузить анимацию объекта ") + charId + ": " + std::to_string(pk.clips.size()) +
+                                      TR(" клипа(ов) из ") + std::to_string(singles.size()) + TR(" файлов одновременно, одной последовательностью?")).c_str(),
                             L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
                 return;
             AnimOptions o = ReadAnimOptions(dlg, s.st);
@@ -910,12 +935,12 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
             }
             SetText(dlg, IDC_A_STATUS, rep);
             FillSequences(dlg, s);
-            if (!ok) MessageBoxW(dlg, Wide(rep).c_str(), L"BLEACH RoS - анимации", MB_ICONWARNING);
+            if (!ok) MessageBoxW(dlg, Wide(rep).c_str(), Wide(TR("BLEACH RoS - анимации")).c_str(), MB_ICONWARNING);
             return;
         }
     }
     if (packs.empty()) {
-        SetText(dlg, IDC_A_STATUS, "Пакеты анимаций " + charId + " не найдены (Motion\\" + charId + "*.tactpkg) - попробуй \"Искать по костям\"");
+        SetText(dlg, IDC_A_STATUS, TR("Пакеты анимаций ") + charId + TR(" не найдены (Motion\\") + charId + TR("*.tactpkg) - попробуй \"Искать по костям\""));
         return;
     }
     // список клипов заранее - чтобы показать, сколько будет
@@ -925,17 +950,17 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
         WaitCursor wc;
         for (const std::string& p : packs) {
             std::unique_ptr<tam::TactPkg> pk(new tam::TactPkg());
-            if (!tam::LoadTact(p, *pk, err)) { Log("Пакет %s не открылся: %s", p.c_str(), err.c_str()); continue; }
+            if (!tam::LoadTact(p, *pk, err)) { Log(TR("Пакет %s не открылся: %s"), p.c_str(), err.c_str()); continue; }
             total += pk->clips.size();
             loaded.push_back(std::move(pk));
         }
     }
-    if (total == 0) { SetText(dlg, IDC_A_STATUS, "В пакетах персонажа нет клипов"); return; }
+    if (total == 0) { SetText(dlg, IDC_A_STATUS, TR("В пакетах персонажа нет клипов")); return; }
     const bool replace = Checked(dlg, IDC_A_APPEND);
-    std::string q = "Загрузить все анимации " + charId + ": пакетов " + std::to_string(loaded.size()) + ", клипов " +
-                    std::to_string(total) + "?\n\nНеподходящие к скелету клипы и повторы пропускаются.";
-    if (replace && !s.seqs.empty()) q += "\nУже загруженные клипы (" + std::to_string(s.seqs.size()) + ") будут удалены.";
-    else if (!s.seqs.empty()) q += "\nНовые клипы встанут после уже загруженных (" + std::to_string(s.seqs.size()) + ").";
+    std::string q = TR("Загрузить все анимации ") + charId + TR(": пакетов ") + std::to_string(loaded.size()) + TR(", клипов ") +
+                    std::to_string(total) + TR("?\n\nНеподходящие к скелету клипы и повторы пропускаются.");
+    if (replace && !s.seqs.empty()) q += TR("\nУже загруженные клипы (") + std::to_string(s.seqs.size()) + TR(") будут удалены.");
+    else if (!s.seqs.empty()) q += TR("\nНовые клипы встанут после уже загруженных (") + std::to_string(s.seqs.size()) + ").";
     if (MessageBoxW(dlg, Wide(q).c_str(), L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
 
     AnimOptions o = ReadAnimOptions(dlg, s.st);
@@ -957,7 +982,7 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
             }
             if (idx.empty()) continue;
             char t[200];
-            std::snprintf(t, sizeof t, "Пакет %zu/%zu: %s (%zu клипов)...", pi + 1, loaded.size(), pk.name.c_str(), idx.size());
+            std::snprintf(t, sizeof t, TR("Пакет %zu/%zu: %s (%zu клипов)..."), pi + 1, loaded.size(), pk.name.c_str(), idx.size());
             SetText(dlg, IDC_A_STATUS, t);
             UpdateWindow(dlg);
             o.replace = replace && first;
@@ -968,13 +993,13 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
                 lastReport = rep;
             } else {
                 ++failedPacks;
-                Log("Пакет %s: %s", pk.name.c_str(), rep.c_str());
+                Log(TR("Пакет %s: %s"), pk.name.c_str(), rep.c_str());
             }
         }
     }
     FillSequences(dlg, s);
     char t[300];
-    std::snprintf(t, sizeof t, "Готово: на таймлайне клипов %zu. Пакетов с клипами: %zu, не подошло пакетов: %zu, повторов пропущено: %zu",
+    std::snprintf(t, sizeof t, TR("Готово: на таймлайне клипов %zu. Пакетов с клипами: %zu, не подошло пакетов: %zu, повторов пропущено: %zu"),
                   s.seqs.size(), added, failedPacks, skippedDup);
     SetText(dlg, IDC_A_STATUS, t);
     Log("%s", t);
@@ -984,18 +1009,18 @@ void LoadCharacterAll(HWND dlg, AnimState& s) {
 // Нужен для объектов и эффектов (garganta...), у которых нет Motion\<id>.tactpkg.
 void FindByBones(HWND dlg, AnimState& s) {
     const unsigned long rig = CurrentRig(dlg, s);
-    if (rig == 0) { SetText(dlg, IDC_A_STATUS, "Нет скелета в сцене"); return; }
+    if (rig == 0) { SetText(dlg, IDC_A_STATUS, TR("Нет скелета в сцене")); return; }
     RefreshRigHashes(dlg, s);
-    if (s.rigHash.empty()) { SetText(dlg, IDC_A_STATUS, "У скелета нет костей с данными импорта"); return; }
+    if (s.rigHash.empty()) { SetText(dlg, IDC_A_STATUS, TR("У скелета нет костей с данными импорта")); return; }
     std::string err;
     if (!EnsureIndex(s.st, false, err)) {
-        SetText(dlg, IDC_A_STATUS, "Папка игры: " + err + " (задай её в окне импорта модели)");
+        SetText(dlg, IDC_A_STATUS, TR("Папка игры: ") + err + TR(" (задай её в окне импорта модели)"));
         return;
     }
     const std::string charId = CurrentRigChar(dlg, s);
-    const std::string q = "Проверить все файлы игры (" + std::to_string(g_index.files.size()) +
-                          ") и найти анимации, которые подходят к костям скелета \"" + charId + "\" (" +
-                          std::to_string(s.rigHash.size()) + " костей)?\n\nЭто может занять минуту. Esc - остановить.";
+    const std::string q = TR("Проверить все файлы игры (") + std::to_string(g_index.files.size()) +
+                          TR(") и найти анимации, которые подходят к костям скелета \"") + charId + "\" (" +
+                          std::to_string(s.rigHash.size()) + TR(" костей)?\n\nЭто может занять минуту. Esc - остановить.");
     if (MessageBoxW(dlg, Wide(q).c_str(), L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
 
     AnimSearch res;
@@ -1007,7 +1032,7 @@ void FindByBones(HWND dlg, AnimState& s) {
             if (now - last > 150) {
                 last = now;
                 char t[400];
-                std::snprintf(t, sizeof t, "Поиск %zu/%zu (Esc - стоп): %s", done, total, tam::FileStem(f).c_str());
+                std::snprintf(t, sizeof t, TR("Поиск %zu/%zu (Esc - стоп): %s"), done, total, tam::FileStem(f).c_str());
                 SetText(dlg, IDC_A_STATUS, t);
                 UpdateWindow(GetDlgItem(dlg, IDC_A_STATUS));
                 MSG m;
@@ -1019,18 +1044,18 @@ void FindByBones(HWND dlg, AnimState& s) {
     }
 
     LogOpen(true);
-    Log("ПОИСК ПО КОСТЯМ: скелет %s, костей %zu; файлов %zu, проверено %zu, открыто пакетов %zu%s", charId.c_str(),
-        s.rigHash.size(), g_index.files.size(), res.checked, res.opened, res.cancelled ? " (остановлен)" : "");
+    Log(TR("ПОИСК ПО КОСТЯМ: скелет %s, костей %zu; файлов %zu, проверено %zu, открыто пакетов %zu%s"), charId.c_str(),
+        s.rigHash.size(), g_index.files.size(), res.checked, res.opened, res.cancelled ? TR(" (остановлен)") : "");
     for (const AnimSource& a : res.found) {
-        Log("  НАЙДЕНО %s [%s]: клипов %zu, подходят %zu (лучший: %zu из %zu костей)", a.path.c_str(), a.container.c_str(),
+        Log(TR("  НАЙДЕНО %s [%s]: клипов %zu, подходят %zu (лучший: %zu из %zu костей)"), a.path.c_str(), a.container.c_str(),
             a.clips, a.fit, a.bestMatched, a.bestBones);
-        for (const std::string& e : a.extras) Log("      эффект/материал: %s", e.c_str());
+        for (const std::string& e : a.extras) Log(TR("      эффект/материал: %s"), e.c_str());
     }
-    Log("  файлы с \"%s\" в имени: %zu", charId.c_str(), res.related.size());
+    Log(TR("  файлы с \"%s\" в имени: %zu"), charId.c_str(), res.related.size());
     for (const auto& r : res.related) Log("    %s   [%s]", r.first.c_str(), r.second.c_str());
-    Log("  расширения файлов игры:");
+    Log(TR("  расширения файлов игры:"));
     for (const auto& kv : res.extCount) Log("    %-12s %zu", kv.first.c_str(), kv.second);
-    Log("  сигнатуры внутри (кроме моделей/текстур):");
+    Log(TR("  сигнатуры внутри (кроме моделей/текстур):"));
     for (const auto& kv : res.magicCount) Log("    %-18s %zu", kv.first.c_str(), kv.second);
 
     s.foundFor = rig;
@@ -1039,7 +1064,7 @@ void FindByBones(HWND dlg, AnimState& s) {
     for (const AnimSource& a : res.found) {
         if (a.fit == 0) continue;
         s.found.push_back(a.path);
-        s.foundNote[a.path] = "подходят " + std::to_string(a.fit) + " из " + std::to_string(a.clips);
+        s.foundNote[a.path] = TR("подходят ") + std::to_string(a.fit) + TR(" из ") + std::to_string(a.clips);
     }
     size_t fx = 0;
     for (const AnimSource& a : res.found) fx += a.extras.size();
@@ -1047,17 +1072,17 @@ void FindByBones(HWND dlg, AnimState& s) {
     if (!s.found.empty() && IsSingleClipFile(prefer)) prefer = kObjectPack;   // части объекта - сразу "все вместе"
     FillPacks(dlg, s, prefer);
     char t[400];
-    std::snprintf(t, sizeof t, "Найдено пакетов с подходящими клипами: %zu%s. Подробно - в логе", s.found.size(),
-                  res.cancelled ? " (поиск остановлен)" : "");
+    std::snprintf(t, sizeof t, TR("Найдено пакетов с подходящими клипами: %zu%s. Подробно - в логе"), s.found.size(),
+                  res.cancelled ? TR(" (поиск остановлен)") : "");
     SetText(dlg, IDC_A_STATUS, t);
     if (s.found.empty()) {
-        std::string m = "Анимаций костей для \"" + charId + "\" в файлах игры не найдено.\n\n";
-        m += "Файлов с \"" + charId + "\" в имени: " + std::to_string(res.related.size());
+        std::string m = TR("Анимаций костей для \"") + charId + TR("\" в файлах игры не найдено.\n\n");
+        m += TR("Файлов с \"") + charId + TR("\" в имени: ") + std::to_string(res.related.size());
         for (size_t i = 0; i < res.related.size() && i < 8; ++i)
             m += "\n  " + tam::FileStem(res.related[i].first) + "  [" + res.related[i].second + "]";
-        if (fx > 0) m += "\n\nНайдены анимации эффектов/материалов с этим именем: " + std::to_string(fx) + " (их формат ещё не разобран).";
-        m += "\n\nСкорее всего, объект анимирует эффект (материал/UV), а не кости. Пришли лог Downloads\\Import bleach.log - разберу.";
-        MessageBoxW(dlg, Wide(m).c_str(), L"BLEACH RoS - поиск", MB_ICONINFORMATION);
+        if (fx > 0) m += TR("\n\nНайдены анимации эффектов/материалов с этим именем: ") + std::to_string(fx) + TR(" (их формат ещё не разобран).");
+        m += TR("\n\nСкорее всего, объект анимирует эффект (материал/UV), а не кости. Пришли лог Downloads\\Import bleach.log - разберу.");
+        MessageBoxW(dlg, Wide(m).c_str(), Wide(TR("BLEACH RoS - поиск")).c_str(), MB_ICONINFORMATION);
     }
 }
 
@@ -1065,37 +1090,37 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
     AnimState* s = g_anim.get();
     switch (msg) {
     case WM_INITDIALOG: {
-        SetWindowTextW(dlg, L"BLEACH Rebirth of Souls - анимации");
-        SetText(dlg, IDC_A_RIG_LBL, "Скелет");
-        SetText(dlg, IDC_A_REFRESH, "Обновить");
-        SetText(dlg, IDC_A_PACK_LBL, "Пакет");
-        SetText(dlg, IDC_A_OPEN, "Открыть...");
-        SetText(dlg, IDC_A_FIND, "Искать по костям");
-        SetText(dlg, IDC_A_FITONLY, "Только подходящие");
-        SetText(dlg, IDC_A_SEARCH_LBL, "Поиск");
-        SetText(dlg, IDC_A_MODE_LBL, "Режим");
-        SetText(dlg, IDC_A_ORDER_LBL, "Эйлер");
+        SetWindowTextW(dlg, Wide(TR("BLEACH Rebirth of Souls - анимации")).c_str());
+        SetText(dlg, IDC_A_RIG_LBL, TR("Скелет"));
+        SetText(dlg, IDC_A_REFRESH, TR("Обновить"));
+        SetText(dlg, IDC_A_PACK_LBL, TR("Пакет"));
+        SetText(dlg, IDC_A_OPEN, TR("Открыть..."));
+        SetText(dlg, IDC_A_FIND, TR("Искать по костям"));
+        SetText(dlg, IDC_A_FITONLY, TR("Только подходящие"));
+        SetText(dlg, IDC_A_SEARCH_LBL, TR("Поиск"));
+        SetText(dlg, IDC_A_MODE_LBL, TR("Режим"));
+        SetText(dlg, IDC_A_ORDER_LBL, TR("Эйлер"));
         SetText(dlg, IDC_A_FPS_LBL, "FPS");
-        SetText(dlg, IDC_A_GAP_LBL, "Пауза");
-        SetText(dlg, IDC_A_APPEND, "Сначала удалить загруженные");
-        SetText(dlg, IDC_A_TOGETHER, "Одновременно (1 клип)");
-        SetText(dlg, IDC_A_LOAD, "Добавить выбранные");
-        SetText(dlg, IDC_A_LOADALL, "Все из пакета (фильтр)");
-        SetText(dlg, IDC_A_LOADCHAR, "ВСЕ анимации персонажа");
-        SetText(dlg, IDC_A_BIND, "Bind-поза (удалить все)");
-        SetText(dlg, IDC_A_SEQGROUP, "Загруженные клипы = Sequences WhiteoutDex (для MDX)");
-        SetText(dlg, IDC_A_PLAY, "Проиграть");
-        SetText(dlg, IDC_A_FULL, "Весь таймлайн");
-        SetText(dlg, IDC_A_DELSEQ, "Удалить клип");
-        SetText(dlg, IDC_A_NAME_LBL, "Имя");
+        SetText(dlg, IDC_A_GAP_LBL, TR("Пауза"));
+        SetText(dlg, IDC_A_APPEND, TR("Сначала удалить загруженные"));
+        SetText(dlg, IDC_A_TOGETHER, TR("Одновременно (1 клип)"));
+        SetText(dlg, IDC_A_LOAD, TR("Добавить выбранные"));
+        SetText(dlg, IDC_A_LOADALL, TR("Все из пакета (фильтр)"));
+        SetText(dlg, IDC_A_LOADCHAR, TR("ВСЕ анимации персонажа"));
+        SetText(dlg, IDC_A_BIND, TR("Bind-поза (удалить все)"));
+        SetText(dlg, IDC_A_SEQGROUP, TR("Загруженные клипы = Sequences WhiteoutDex (для MDX)"));
+        SetText(dlg, IDC_A_PLAY, TR("Проиграть"));
+        SetText(dlg, IDC_A_FULL, TR("Весь таймлайн"));
+        SetText(dlg, IDC_A_DELSEQ, TR("Удалить клип"));
+        SetText(dlg, IDC_A_NAME_LBL, TR("Имя"));
         SetText(dlg, IDC_A_NONLOOP, "NonLooping");
-        SetText(dlg, IDC_A_RENAME, "Переименовать");
-        SetText(dlg, IDCANCEL, "Закрыть");
+        SetText(dlg, IDC_A_RENAME, TR("Переименовать"));
+        SetText(dlg, IDCANCEL, TR("Закрыть"));
         if (s == nullptr) return TRUE;
         s->st.Load();
-        ComboFill(dlg, IDC_A_MODE, { "Авто", "Дельта от bind", "Абсолютные" }, s->st.GetInt("anim_mode", 0));
+        ComboFill(dlg, IDC_A_MODE, { TR("Авто"), TR("Дельта от bind"), TR("Абсолютные") }, s->st.GetInt("anim_mode", 0));
         ComboFill(dlg, IDC_A_ORDER, { "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX" }, s->st.GetInt("anim_order", 0));
-        ComboFill(dlg, IDC_A_FPS, { "не менять", "30", "60" }, s->st.GetInt("anim_fps", 0));
+        ComboFill(dlg, IDC_A_FPS, { TR("не менять"), "30", "60" }, s->st.GetInt("anim_fps", 0));
         SetText(dlg, IDC_A_GAP, std::to_string(s->st.GetInt("anim_gap", 10)));
         Check(dlg, IDC_A_APPEND, s->st.GetInt("anim_replace", 0) != 0);
         Check(dlg, IDC_A_FITONLY, s->st.GetInt("anim_fitonly", 0) != 0);
@@ -1134,7 +1159,7 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
             return TRUE;
         case IDC_A_OPEN: {
             std::string f;
-            if (PickFile(dlg, L"Анимации (*.tactpkg;*.tmo;*.cat)\0*.tactpkg;*.tmo;*.cat\0Все файлы\0*.*\0", L"Открыть анимации", f))
+            if (PickFile(dlg, Filter(TR("Анимации (*.tactpkg;*.tmo;*.tmo2;*.cat)"), L"*.tactpkg;*.tmo;*.tmo2;*.cat").c_str(), Wide(TR("Открыть анимации")).c_str(), f))
                 FillPacks(dlg, *s, f);
             return TRUE;
         }
@@ -1154,7 +1179,7 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
         case IDC_A_LOADCHAR: LoadCharacterAll(dlg, *s); return TRUE;
         case IDC_A_LOADALL: {
             if (s->shown.size() > 40 &&
-                MessageBoxW(dlg, Wide("Загрузить " + std::to_string(s->shown.size()) + " клипов подряд? Это может занять время.").c_str(),
+                MessageBoxW(dlg, Wide(TR("Загрузить ") + std::to_string(s->shown.size()) + TR(" клипов подряд? Это может занять время.")).c_str(),
                             L"BLEACH RoS", MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
                 return TRUE;
             ApplySelected(dlg, *s, true);
@@ -1209,11 +1234,22 @@ INT_PTR CALLBACK AnimProc(HWND dlg, UINT msg, WPARAM wp, LPARAM) {
 int ShowModelDialog(const UiBridge& b, const std::string& preselectFile) {
     INITCOMMONCONTROLSEX icc{ sizeof(INITCOMMONCONTROLSEX), ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&icc);
-    ModelState s;
-    s.bridge = &b;
-    s.preselect = preselectFile;
-    const INT_PTR r = DialogBoxParamW(static_cast<HINSTANCE>(b.hInstance), MAKEINTRESOURCEW(IDD_MODEL),
-                                      static_cast<HWND>(b.parent), ModelProc, reinterpret_cast<LPARAM>(&s));
+    INT_PTR r = 0;
+    std::string pre = preselectFile;
+    for (int round = 0; round < 8; ++round) {
+        ModelState s;
+        s.bridge = &b;
+        s.preselect = pre;
+        r = DialogBoxParamW(static_cast<HINSTANCE>(b.hInstance), MAKEINTRESOURCEW(IDD_MODEL), static_cast<HWND>(b.parent), ModelProc,
+                            reinterpret_cast<LPARAM>(&s));
+        if (r != kRelaunch) break;
+        // смена языка: окно анимаций тоже пересоздать
+        if (g_animDlg != nullptr) {
+            const std::string pack = g_anim ? g_anim->pkgPath : std::string();
+            DestroyWindow(g_animDlg);
+            ShowAnimDialog(b, pack == kObjectPack ? std::string() : pack);
+        }
+    }
     return r < 0 ? -1 : 1;
 }
 

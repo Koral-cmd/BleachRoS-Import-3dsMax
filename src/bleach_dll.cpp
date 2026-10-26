@@ -38,8 +38,10 @@ public:
     const MCHAR* OtherMessage2() override { return _T(""); }
     unsigned int Version() override { return BLEACHIMPORT_VERSION; }
     void ShowAbout(HWND hWnd) override {
-        MessageBox(hWnd, _T("BLEACH RoS Import ") BLEACHIMPORT_VERSION_STR _T("\n\nМеню Bleach Tool или Файл -> Импорт (.tmd2 / .tactpkg)."),
-                   _T("BLEACH RoS Import"), MB_ICONINFORMATION);
+        bleach::ApplyLanguage();
+        const std::wstring msg = std::wstring(L"BLEACH RoS Import ") + BLEACHIMPORT_VERSION_STR +
+                                bleach::Wide(TR("\n\nМеню Bleach Tool или Файл -> Импорт (.tmd2 / .tactpkg)."));
+        MessageBox(hWnd, msg.c_str(), _T("BLEACH RoS Import"), MB_ICONINFORMATION);
     }
     int DoImport(const MCHAR* name, ImpInterface*, Interface*, BOOL suppressPrompts) override {
         try {
@@ -119,11 +121,11 @@ __declspec(dllexport) int LibInitialize() {
     FPInterface* const before = GetCOREInterface(BLEACHIMPORT_FP_ID);
     std::wstring text = std::wstring(L"BleachRoSImport ") + BLEACHIMPORT_VERSION_STR + L", MAX_RELEASE " + std::to_wstring(MAX_RELEASE) + L"\r\n";
     text += L"BleachCpp: ";
-    text += (before == ours) ? L"зарегистрирован" : (before != nullptr ? L"занят другим объектом" : L"не зарегистрирован");
+    text += (before == ours) ? L"registered" : (before != nullptr ? L"taken by another object" : L"not registered");
     text += L"\r\n";
     if (before == nullptr) {
         RegisterCOREInterface(ours);
-        text += (GetCOREInterface(BLEACHIMPORT_FP_ID) == ours) ? L"  зарегистрирован вручную\r\n" : L"  регистрация не удалась\r\n";
+        text += (GetCOREInterface(BLEACHIMPORT_FP_ID) == ours) ? L"  registered manually\r\n" : L"  registration failed\r\n";
     }
     bleach::WriteStartLog(text);
     return TRUE;

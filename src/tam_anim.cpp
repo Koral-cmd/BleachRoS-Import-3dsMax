@@ -1,6 +1,7 @@
 // ============================================================
 //  tam_anim.cpp - см. tam_anim.h
 // ============================================================
+#include "lang.h"
 #include "tam_anim.h"
 
 #include <algorithm>
@@ -116,10 +117,10 @@ void EvaluateClip(const Tmo& clip, const Skeleton& skel, const AnimSettings& s, 
 
 std::string DescribeMatch(const Tmo& clip, const ClipMatch& m) {
     char b[400];
-    std::snprintf(b, sizeof b, "%s: кадров %d, костей в клипе %zu, найдено %zu, нет в скелете %zu, режим %s (авто: abs %d / delta %d)%s",
+    std::snprintf(b, sizeof b, TR("%s: кадров %d, костей в клипе %zu, найдено %zu, нет в скелете %zu, режим %s (авто: abs %d / delta %d)%s"),
                   clip.name.c_str(), clip.length, clip.hashes.size(), m.matched.size(), m.missing.size(),
                   m.resolved == AnimMode::Absolute ? "absolute" : "delta", m.votesAbs, m.votesDelta,
-                  m.degrees ? ", поворот в градусах" : "");
+                  m.degrees ? TR(", поворот в градусах") : "");
     return b;
 }
 

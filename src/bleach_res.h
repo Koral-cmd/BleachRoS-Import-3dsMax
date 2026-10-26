@@ -35,6 +35,7 @@
 #define IDC_M_STATUS     1029
 #define IDC_M_ANIMS      1030
 #define IDC_M_LODS       1031
+#define IDC_M_LANG       1032
 
 #define IDC_A_RIG_LBL    1101
 #define IDC_A_RIG        1102

@@ -350,12 +350,18 @@ int Character::MaxLods() const {
     return m;
 }
 
+void ApplyLanguage() {
+    Settings st;
+    st.Load();
+    i18n::SetLang(i18n::FromSetting(st.GetInt("lang", 0)));
+}
+
 bool ScanGame(const std::string& root, GameIndex& out, std::string& err) {
     out = GameIndex();
     out.root = root;
     std::error_code ec;
     const fs::path r = fs::u8path(root);
-    if (!fs::is_directory(r, ec)) { err = "Папка не найдена: " + root; return false; }
+    if (!fs::is_directory(r, ec)) { err = TR("Папка не найдена: ") + root; return false; }
     fs::recursive_directory_iterator it(r, fs::directory_options::skip_permission_denied, ec), end;
     if (ec) { err = ec.message(); return false; }
     for (; it != end; it.increment(ec)) {
@@ -445,14 +451,14 @@ void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, 
     std::vector<uint32_t> h;
     for (size_t fi = 0; fi < total; ++fi) {
         const AnyFile& f = g.files[fi];
-        ++out.extCount[f.ext.empty() ? std::string("(без расширения)") : f.ext];
+        ++out.extCount[f.ext.empty() ? std::string(TR("(без расширения)")) : f.ext];
         const std::string stem = Lower(tam::FileStem(f.path));
         const bool related = id.size() >= 3 && stem.find(id) != std::string::npos;
         if (progress && (fi % 16) == 0 && !progress(fi, total, f.path)) { out.cancelled = true; break; }
         if (SkipExt(f.ext) && !related) continue;
         ++out.checked;
         const std::string magic = tam::SniffMagic(f.path);
-        ++out.magicCount[magic.empty() ? std::string("(пусто)") : magic];
+        ++out.magicCount[magic.empty() ? std::string(TR("(пусто)")) : magic];
         if (related) out.related.push_back({ f.path, magic });
         // контейнеры анимаций; файлы с именем объекта - ещё и по сигнатуре tmo внутри
         const bool modelOrTex = magic == "tmd0" || magic == "DDS " || f.ext == ".lds";
@@ -480,7 +486,7 @@ void FindAnimations(const GameIndex& g, const std::vector<uint32_t>& rigHashes, 
         if (!id.empty())
             for (const tam::SubEntry& e : pk.extras)
                 if (Lower(e.name).find(id) != std::string::npos || Lower(e.where).find(id) != std::string::npos)
-                    src.extras.push_back(e.type + " " + e.where + "/" + e.name + " (" + std::to_string(e.size) + " байт)");
+                    src.extras.push_back(e.type + " " + e.where + "/" + e.name + " (" + std::to_string(e.size) + TR(" байт)"));
         if (src.fit > 0 || !src.extras.empty()) out.found.push_back(src);
     }
     // выше: файлы с именем объекта, потом по полноте совпадения лучшего клипа

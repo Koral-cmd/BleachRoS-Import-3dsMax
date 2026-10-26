@@ -175,6 +175,11 @@ FIND bones=3 files=13 checked=12 opened=4
   magic actmng_pkg 2
   magic tmd0 6
   magic tmo1 1
+MERGED garganta_open +1 bones=3 length=11
+garganta_open +1: кадров 11, костей в клипе 3, найдено 2, нет в скелете 1, режим absolute (авто: abs 2 / delta 0)
+  F0 root anim=0 t=(0.00000 0.00000 0.00000) dAngleToBind=0.00
+  F0 spine anim=1 t=(0.00000 1.00000 0.00000) dAngleToBind=0.00
+  F0 head anim=1 t=(0.00000 1.60000 0.00000) dAngleToBind=0.00
 FIND bones=3 files=14 checked=13 opened=5
   found pl999_fx [поиск по сигнатуре] clips=2 fit=1 best=2/2
   related pl999_fx [XFX1]

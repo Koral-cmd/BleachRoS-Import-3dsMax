@@ -195,7 +195,7 @@ std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& cha
     tam::Lds l;
     std::string err;
     if (!tam::LoadLds(lds, l, err)) {
-        Log("  текстуры %s: %s", t.name.c_str(), err.c_str());
+        Log(TR("  текстуры %s: %s"), t.name.c_str(), err.c_str());
         return out;
     }
     const std::wstring dir = DataDir() + L"\\textures\\" + Wide(charId);
@@ -206,7 +206,7 @@ std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& cha
     for (size_t i = 0; i < l.textures.size(); ++i) {
         const std::wstring p = dir + L"\\" + Wide(t.name + suffix) + L"_" + std::to_wstring(i) + L".dds";
         if (!WriteFileW(p, l.textures[i])) {
-            Log("  [!] не записать %s", Utf8(p).c_str());
+            Log(TR("  [!] не записать %s"), Utf8(p).c_str());
             continue;
         }
         const tam::DdsInfo di = tam::InspectDds(l.textures[i]);
@@ -216,7 +216,7 @@ std::map<int, TexInfo> ExportTextures(const tam::Tmd2& t, const std::string& cha
         ti.format = di.format;
         out[static_cast<int>(i)] = ti;
     }
-    Log("  %s.lds: текстур %zu -> %s", t.name.c_str(), l.textures.size(), Utf8(dir).c_str());
+    Log(TR("  %s.lds: текстур %zu -> %s"), t.name.c_str(), l.textures.size(), Utf8(dir).c_str());
     return out;
 }
 
@@ -257,7 +257,7 @@ bool ReadRig(ULONG handle, SceneRig& rig, std::string& err) {
     Interface* ip = GetCOREInterface();
     rig.root = ip->GetINodeByHandle(handle);
     if (rig.root == nullptr || GetProp(rig.root, "bleach_root") != "1") {
-        err = "Скелет не найден в сцене";
+        err = TR("Скелет не найден в сцене");
         return false;
     }
     double sc = 1.0;
@@ -295,7 +295,7 @@ bool ReadRig(ULONG handle, SceneRig& rig, std::string& err) {
     }
     rig.skel.Finalize();
     if (rig.nodes.empty()) {
-        err = "У скелета нет костей с данными импорта";
+        err = TR("У скелета нет костей с данными импорта");
         return false;
     }
     return true;
@@ -320,7 +320,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
     LogOpen(false);
     Log("BLEACH RoS Import %s, MAX_RELEASE %d", Utf8(BLEACHIMPORT_VERSION_STR).c_str(), MAX_RELEASE);
     Interface* ip = GetCOREInterface();
-    if (ip == nullptr) { report = "Нет интерфейса Max"; return false; }
+    if (ip == nullptr) { report = TR("Нет интерфейса Max"); return false; }
 
     // ---- чтение ----
     std::vector<std::unique_ptr<tam::Tmd2>> tmds;
@@ -330,7 +330,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         std::unique_ptr<tam::Tmd2> t(new tam::Tmd2());
         std::string err;
         if (!tam::LoadTmd2(it.path, *t, err)) {
-            Log("ОШИБКА %s", err.c_str());
+            Log(TR("ОШИБКА %s"), err.c_str());
             errors += err + "\n";
             continue;
         }
@@ -339,7 +339,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         tmds.push_back(std::move(t));
     }
     if (tmds.empty()) {
-        report = "Ни один файл не прочитан.\n" + errors;
+        report = TR("Ни один файл не прочитан.\n") + errors;
         return false;
     }
 
@@ -353,7 +353,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
     std::vector<std::string> blog;
     tam::BuildSkeleton(parts, skel, bo, blog);
     for (const std::string& l : blog) LogRaw(l);
-    Log("Скелет: костей %zu", skel.bones.size());
+    Log(TR("Скелет: костей %zu"), skel.bones.size());
 
     // ---- масштаб ----
     double height = 0.0;
@@ -361,7 +361,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
     const double gameK = (o.gameUnits == 1) ? 1.0 : (o.gameUnits == 2) ? 0.01 : (height > 20.0 ? 0.01 : 1.0);
     const double upm = o.unitsPerMeter > 0.0 ? o.unitsPerMeter : SystemUnitsPerMeter();
     const double S = upm * gameK;
-    Log("Масштаб: высота bbox %.3f, ед. игры = %s, %.4f ед. Max на метр -> S = %.5f", height, gameK == 1.0 ? "м" : "см", upm, S);
+    Log(TR("Масштаб: высота bbox %.3f, ед. игры = %s, %.4f ед. Max на метр -> S = %.5f"), height, gameK == 1.0 ? TR("м") : TR("см"), upm, S);
 
     std::string charId;
     for (const tam::Part& p : parts)
@@ -383,7 +383,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
 
         // ---- корень ----
         root = MakeHelper(ip);
-        if (root == nullptr) { report = "Не удалось создать корневой helper"; return false; }
+        if (root == nullptr) { report = TR("Не удалось создать корневой helper"); return false; }
         root->SetName(M(charId + "_root").data());
         root->SetWireColor(RGB(255, 200, 40));
         SetProp(root, "bleach_root", "1");
@@ -500,7 +500,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
                     lodLayer = charId + " LOD" + std::to_string(item.lod) + " (" + item.lodName + ")";
                     ++lodMeshes;
                 } else if (Lower(pm.name).find("lod") != std::string::npos) {
-                    lodLayer = charId + " LOD (внутри файла)";
+                    lodLayer = charId + TR(" LOD (внутри файла)");
                     ++inFileLods;
                 }
                 std::string nodeName = t.name + "_" + pm.name;
@@ -538,7 +538,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
                                     }
                                 }
                             }
-                            Log("  материал %s: шейдер %s, текстур %zu, параметров %zu, диффуз %s", mg.name.c_str(), tm.shader.c_str(),
+                            Log(TR("  материал %s: шейдер %s, текстур %zu, параметров %zu, диффуз %s"), mg.name.c_str(), tm.shader.c_str(),
                                 tm.textures.size(), tm.params.size(), mg.diffuse.empty() ? "-" : mg.diffuse.c_str());
                         }
                         g = groupOf.emplace(key, static_cast<int>(groups.size())).first;
@@ -551,7 +551,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
                 // привязка / Skin
                 if (pm.staticParent >= 0 && boneNodes[static_cast<size_t>(pm.staticParent)] != nullptr) {
                     boneNodes[static_cast<size_t>(pm.staticParent)]->AttachChild(node, 1);
-                    Log("  %s: статичный, привязан к %s", nodeName.c_str(), skel.bones[static_cast<size_t>(pm.staticParent)].name.c_str());
+                    Log(TR("  %s: статичный, привязан к %s"), nodeName.c_str(), skel.bones[static_cast<size_t>(pm.staticParent)].name.c_str());
                 } else if (pm.skinned && o.skin) {
                     Modifier* mod = static_cast<Modifier*>(ip->CreateInstance(OSM_CLASS_ID, SKIN_CLASSID));
                     ISkinImportData* imp = mod ? static_cast<ISkinImportData*>(mod->GetInterface(I_SKINIMPORTDATA)) : nullptr;
@@ -585,15 +585,15 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
                         }
                         node->EvalWorldState(ip->GetTime());
                         ++skinned;
-                        Log("  %s: вершин %zu, граней %zu, костей в Skin %zu, весов записано %zu", nodeName.c_str(), nv, nf, used.size(), set);
+                        Log(TR("  %s: вершин %zu, граней %zu, костей в Skin %zu, весов записано %zu"), nodeName.c_str(), nv, nf, used.size(), set);
                     } else {
-                        Log("  [!] %s: Skin не создан", nodeName.c_str());
+                        Log(TR("  [!] %s: Skin не создан"), nodeName.c_str());
                     }
                 } else {
                     root->AttachChild(node, 1);
-                    Log("  %s: вершин %zu, граней %zu (без Skin)", nodeName.c_str(), nv, nf);
+                    Log(TR("  %s: вершин %zu, граней %zu (без Skin)"), nodeName.c_str(), nv, nf);
                 }
-                if (pm.degenerate) Log("  %s: пропущено вырожденных граней %zu", nodeName.c_str(), pm.degenerate);
+                if (pm.degenerate) Log(TR("  %s: пропущено вырожденных граней %zu"), nodeName.c_str(), pm.degenerate);
                 if (!pm.note.empty()) Log("  %s: %s", nodeName.c_str(), pm.note.c_str());
                 ++meshCount;
                 vertTotal += nv;
@@ -604,7 +604,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
 
     // ---- вид костей, материалы, слои (MAXScript одним куском) ----
     std::wstring sk = L"(\n" + boneScript + L")\n";
-    if (!RunScript(sk)) Log("[!] скрипт вида костей не выполнился");
+    if (!RunScript(sk)) Log(TR("[!] скрипт вида костей не выполнился"));
 
     std::wstring ms = L"(\n local cls = (if PhysicalMaterial != undefined then PhysicalMaterial else StandardMaterial)\n local mats = #()\n";
     for (const MatGroup& g : groups) {
@@ -634,7 +634,7 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
         ms += L"  ))\n";
     }
     ms += L" OK\n)\n";
-    if (!groups.empty() && !RunScript(ms)) Log("[!] скрипт материалов не выполнился");
+    if (!groups.empty() && !RunScript(ms)) Log(TR("[!] скрипт материалов не выполнился"));
 
     auto layerScript = [](const std::string& name, const std::vector<ULONG>& handles, bool hidden) {
         std::wstring s = L"(\n local l = LayerManager.getLayerFromName " + Q(name) + L"\n if l == undefined do l = LayerManager.newLayerFromName " + Q(name) + L"\n";
@@ -650,14 +650,13 @@ bool ImportModels(const std::vector<ImportItem>& items, const ImportOptions& o, 
 
     char b[700];
     std::snprintf(b, sizeof b,
-                  "Персонаж %s%s%s\nФайлов: %zu, костей: %zu\nОбъектов: %zu (вершин %zu, граней %zu), со Skin: %zu\nМатериалов: %zu\n"
-                  "LOD: %s\nМасштаб: 1 ед. игры = %s ед. Max\n\nЛог: %s%s%s",
+                  TR("Персонаж %s%s%s\nФайлов: %zu, костей: %zu\nОбъектов: %zu (вершин %zu, граней %zu), со Skin: %zu\nМатериалов: %zu\nLOD: %s\nМасштаб: 1 ед. игры = %s ед. Max\n\nЛог: %s%s%s"),
                   charId.c_str(), CharacterName(charId).empty() ? "" : " - ", CharacterName(charId).c_str(), tmds.size(), skel.bones.size(),
                   meshCount, vertTotal, faceTotal, skinned, groups.size(),
-                  lodMeshes + inFileLods == 0 ? "нет (импортированы только основные модели)"
-                                              : (std::to_string(lodMeshes) + " объектов младших уровней, " + std::to_string(inFileLods) +
-                                                 " внутри файлов (скрытые слои)").c_str(),
-                  Num(S).c_str(), Utf8(LogPath()).c_str(), errors.empty() ? "" : "\n\nОшибки:\n", errors.c_str());
+                  lodMeshes + inFileLods == 0 ? TR("нет (импортированы только основные модели)")
+                                              : (std::to_string(lodMeshes) + TR(" объектов младших уровней, ") + std::to_string(inFileLods) +
+                                                 TR(" внутри файлов (скрытые слои)")).c_str(),
+                  Num(S).c_str(), Utf8(LogPath()).c_str(), errors.empty() ? "" : TR("\n\nОшибки:\n"), errors.c_str());
     report = b;
     Log("%s", report.c_str());
     return meshCount > 0 || !skel.bones.empty();
@@ -944,8 +943,8 @@ void PublishSequences(const std::vector<Loaded>& clips) {
     DeleteFileW2(file);
     if (!ran || mode.empty()) mode = "notes";
     if (mode.compare(0, 5, "notes") == 0 && ip != nullptr) LoadedToNotes(ip->GetRootNode(), clips);
-    Log("  последовательностей %zu -> %s", clips.size(),
-        mode.compare(0, 3, "wdx") == 0 ? "WhiteoutDex (Sequence Manager)" : mode.compare(0, 2, "ca") == 0 ? "блок seqNames на rootNode" : "note track на rootNode");
+    Log(TR("  последовательностей %zu -> %s"), clips.size(),
+        mode.compare(0, 3, "wdx") == 0 ? "WhiteoutDex (Sequence Manager)" : mode.compare(0, 2, "ca") == 0 ? TR("блок seqNames на rootNode") : TR("note track на rootNode"));
 }
 
 // Текущие клипы скелета: блок WhiteoutDex (если не пуст), иначе запись на helper'е.
@@ -1043,7 +1042,7 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     std::vector<tam::Tmo> clips;
     for (size_t ci : clipIdx) {
         tam::Tmo clip;
-        if (!pkg.Clip(ci, clip, err)) { Log("  [!] %s", err.c_str()); rejected.push_back(pkg.clips[ci].name + " (не читается)"); continue; }
+        if (!pkg.Clip(ci, clip, err)) { Log("  [!] %s", err.c_str()); rejected.push_back(pkg.clips[ci].name + TR(" (не читается)")); continue; }
         clips.push_back(std::move(clip));
     }
     if (o.together && clips.size() > 1) {
@@ -1053,20 +1052,20 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
         const std::string nm = o.mergedName.empty() ? tam::CommonClipName(names) : o.mergedName;
         std::string list;
         for (const std::string& n : names) list += (list.empty() ? "" : ", ") + n;
-        Log("ВМЕСТЕ -> %s: %s", nm.c_str(), list.c_str());
+        Log(TR("ВМЕСТЕ -> %s: %s"), nm.c_str(), list.c_str());
         tam::Tmo merged = tam::MergeClips(clips, nm);
         clips.clear();
         clips.push_back(std::move(merged));
     }
     for (const tam::Tmo& clip : clips) {
         const tam::ClipMatch m = tam::MatchClip(clip, rig.skel, as);
-        Log("АНИМ %s", tam::DescribeMatch(clip, m).c_str());
+        Log(TR("АНИМ %s"), tam::DescribeMatch(clip, m).c_str());
         for (const std::string& w : clip.warnings) Log("    [!] %s", w.c_str());
         // подходит, если покрывает большую часть клипа или большую часть скелета
         const size_t mt = m.matched.size(), cb = clip.hashes.size(), sb = rig.skel.bones.size();
         if (!tam::ClipFits(mt, cb, sb)) {
-            Log("    не подходит к скелету (%zu из %zu костей клипа) - пропуск", mt, cb);
-            rejected.push_back(clip.name + " (" + std::to_string(mt) + "/" + std::to_string(cb) + " костей)");
+            Log(TR("    не подходит к скелету (%zu из %zu костей клипа) - пропуск"), mt, cb);
+            rejected.push_back(clip.name + " (" + std::to_string(mt) + "/" + std::to_string(cb) + TR(" костей)"));
             continue;
         }
         Ready r;
@@ -1079,8 +1078,8 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
         ready.push_back(std::move(r));
     }
     if (ready.empty()) {
-        report = "Ни один клип не подходит к скелету \"" + FromMax(rig.root->GetName()) + "\" - ничего не изменено.";
-        if (!rejected.empty()) report += "\nОтброшены: " + rejected.front() + (rejected.size() > 1 ? " и ещё " + std::to_string(rejected.size() - 1) : "");
+        report = TR("Ни один клип не подходит к скелету \"") + FromMax(rig.root->GetName()) + TR("\" - ничего не изменено.");
+        if (!rejected.empty()) report += TR("\nОтброшены: ") + rejected.front() + (rejected.size() > 1 ? " (+" + std::to_string(rejected.size() - 1) + ")" : "");
         Log("%s", report.c_str());
         return false;
     }
@@ -1093,7 +1092,7 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     if (o.replace && !loaded.empty()) {
         RedrawOff ro(ip);
         ResetControllers(ip, rig);
-        Log("  загруженные клипы (%zu) удалены перед загрузкой", loaded.size());
+        Log(TR("  загруженные клипы (%zu) удалены перед загрузкой"), loaded.size());
         loaded.clear();
     }
     int lastEnd = 0;
@@ -1186,11 +1185,11 @@ bool ApplyClips(ULONG handle, const tam::TactPkg& pkg, const std::vector<size_t>
     ip->RedrawViews(ip->GetTime());
 
     char b[500];
-    std::snprintf(b, sizeof b, "Добавлено клипов: %zu (кадры %d-%d), всего на таймлайне: %zu, ключей %zu, %d fps, линейные контроллеры%s",
-                  added.size(), added.front().start, added.back().end, loaded.size(), keys, GetFrameRate(), withScale ? " (+ масштаб)" : "");
+    std::snprintf(b, sizeof b, TR("Добавлено клипов: %zu (кадры %d-%d), всего на таймлайне: %zu, ключей %zu, %d fps, линейные контроллеры%s"),
+                  added.size(), added.front().start, added.back().end, loaded.size(), keys, GetFrameRate(), withScale ? TR(" (+ масштаб)") : "");
     report = b;
     if (!rejected.empty())
-        report += "\nОтброшено (не подходят к скелету): " + std::to_string(rejected.size()) + " - " + rejected.front() +
+        report += TR("\nОтброшено (не подходят к скелету): ") + std::to_string(rejected.size()) + " - " + rejected.front() +
                   (rejected.size() > 1 ? ", ..." : "");
     Log("%s", report.c_str());
     return true;
@@ -1206,7 +1205,7 @@ bool ResetBind(ULONG handle, std::string& report) {
         ResetControllers(ip, rig);
     }
     StoreLoaded(rig.root, std::vector<Loaded>());
-    report = "Скелет в bind-позе, все клипы и последовательности удалены";
+    report = TR("Скелет в bind-позе, все клипы и последовательности удалены");
     return true;
 }
 
@@ -1224,7 +1223,7 @@ bool DeleteSequence(ULONG handle, size_t index, std::string& report) {
     std::string err;
     if (!ReadRig(handle, rig, err)) { report = err; return false; }
     std::vector<Loaded> loaded = CurrentLoaded(rig.root);
-    if (index >= loaded.size()) { report = "Выбери загруженный клип"; return false; }
+    if (index >= loaded.size()) { report = TR("Выбери загруженный клип"); return false; }
     const Loaded gone = loaded[index];
     loaded.erase(loaded.begin() + static_cast<long>(index));
     {
@@ -1235,7 +1234,7 @@ bool DeleteSequence(ULONG handle, size_t index, std::string& report) {
     }
     StoreLoaded(rig.root, loaded);
     char b[300];
-    std::snprintf(b, sizeof b, "\"%s\" удалён (кадры %d-%d), осталось клипов: %zu", gone.name.c_str(), gone.start, gone.end, loaded.size());
+    std::snprintf(b, sizeof b, TR("\"%s\" удалён (кадры %d-%d), осталось клипов: %zu"), gone.name.c_str(), gone.start, gone.end, loaded.size());
     report = b;
     Log("%s", report.c_str());
     return true;
@@ -1246,12 +1245,12 @@ bool RenameSequence(ULONG handle, size_t index, const std::string& name, bool no
     std::string err;
     if (!ReadRig(handle, rig, err)) { report = err; return false; }
     std::vector<Loaded> loaded = CurrentLoaded(rig.root);
-    if (index >= loaded.size()) { report = "Выбери загруженный клип"; return false; }
+    if (index >= loaded.size()) { report = TR("Выбери загруженный клип"); return false; }
     std::string n = name;
     while (!n.empty() && (n.back() == ' ' || n.back() == '\t')) n.pop_back();
     while (!n.empty() && (n.front() == ' ' || n.front() == '\t')) n.erase(0, 1);
     n.erase(std::remove(n.begin(), n.end(), '"'), n.end());
-    if (n.empty()) { report = "Пустое имя"; return false; }
+    if (n.empty()) { report = TR("Пустое имя"); return false; }
     const std::string old = loaded[index].name;
     loaded[index].name = n;
     loaded[index].nonLooping = nonLooping;
@@ -1319,8 +1318,8 @@ UiBridge MakeBridge() {
     b.parent = ip ? ip->GetMAXHWnd() : nullptr;
     b.importModels = [](const std::vector<ImportItem>& items, const ImportOptions& o, std::string& rep) {
         try { return ImportModels(items, o, rep); }
-        catch (const std::exception& e) { rep = std::string("Ошибка: ") + e.what(); Log("ИСКЛЮЧЕНИЕ %s", e.what()); }
-        catch (...) { rep = "Неизвестная ошибка"; }
+        catch (const std::exception& e) { rep = std::string(TR("Ошибка: ")) + e.what(); Log(TR("ИСКЛЮЧЕНИЕ %s"), e.what()); }
+        catch (...) { rep = TR("Неизвестная ошибка"); }
         return false;
     };
     b.listRigs = []() {
@@ -1342,21 +1341,21 @@ UiBridge MakeBridge() {
     };
     b.applyClips = [](unsigned long h, const tam::TactPkg& p, const std::vector<size_t>& c, const AnimOptions& o, std::string& rep) {
         try { return ApplyClips(h, p, c, o, rep); }
-        catch (const std::exception& e) { rep = std::string("Ошибка: ") + e.what(); Log("ИСКЛЮЧЕНИЕ %s", e.what()); }
-        catch (...) { rep = "Неизвестная ошибка"; }
+        catch (const std::exception& e) { rep = std::string(TR("Ошибка: ")) + e.what(); Log(TR("ИСКЛЮЧЕНИЕ %s"), e.what()); }
+        catch (...) { rep = TR("Неизвестная ошибка"); }
         return false;
     };
     b.resetBind = [](unsigned long h, std::string& rep) {
-        try { return ResetBind(h, rep); } catch (...) { rep = "Ошибка"; return false; }
+        try { return ResetBind(h, rep); } catch (...) { rep = TR("Ошибка"); return false; }
     };
     b.sequences = [](unsigned long h) {
         try { return Sequences(h); } catch (...) { return std::vector<SequenceInfo>(); }
     };
     b.deleteSequence = [](unsigned long h, size_t i, std::string& rep) {
-        try { return DeleteSequence(h, i, rep); } catch (...) { rep = "Ошибка"; return false; }
+        try { return DeleteSequence(h, i, rep); } catch (...) { rep = TR("Ошибка"); return false; }
     };
     b.renameSequence = [](unsigned long h, size_t i, const std::string& n, bool nl, std::string& rep) {
-        try { return RenameSequence(h, i, n, nl, rep); } catch (...) { rep = "Ошибка"; return false; }
+        try { return RenameSequence(h, i, n, nl, rep); } catch (...) { rep = TR("Ошибка"); return false; }
     };
     b.showRange = [](int a, int e) {
         try { ShowRange(a, e); } catch (...) {}
@@ -1383,6 +1382,7 @@ std::string LowerExt(const std::string& p) {
 // ============================================================
 int OpenModelDialog(const std::string& preselect) {
     try {
+        ApplyLanguage();
         return ShowModelDialog(Bridge(), preselect);
     } catch (...) {
         return -1;
@@ -1391,12 +1391,14 @@ int OpenModelDialog(const std::string& preselect) {
 
 void OpenAnimDialog(const std::string& preselect) {
     try {
+        ApplyLanguage();
         ShowAnimDialog(Bridge(), preselect);
     } catch (...) {
     }
 }
 
 int ImportEntry(const MCHAR* path, BOOL suppressPrompts) {
+    try { ApplyLanguage(); } catch (...) {}
     const std::string p = FromMax(path);
     const std::string ext = LowerExt(p);
     if (ext == ".tactpkg") {
@@ -1417,12 +1419,12 @@ int ImportEntry(const MCHAR* path, BOOL suppressPrompts) {
 std::string LodInfo(const std::string& path) {
     try {
         const auto s = LodSiblings(path);
-        if (s.size() <= 1) return "LOD нет (только " + (s.empty() || s[0].first.empty() ? std::string("этот файл") : s[0].first) + ")";
-        std::string r = "LOD есть, уровней " + std::to_string(s.size()) + ":";
+        if (s.size() <= 1) return TR("LOD нет (только ") + (s.empty() || s[0].first.empty() ? std::string(TR("этот файл")) : s[0].first) + ")";
+        std::string r = TR("LOD есть, уровней ") + std::to_string(s.size()) + ":";
         for (const auto& x : s) r += " " + x.first;
         return r;
     } catch (...) {
-        return "ошибка";
+        return TR("ошибка");
     }
 }
 

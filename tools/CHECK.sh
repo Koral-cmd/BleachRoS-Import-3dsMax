@@ -19,6 +19,7 @@ for R in 18000 19000 20000 21000 22000 23000 24000 25000 26000 27000 28000 29000
   fi
 done
 [ "$FAIL" = 0 ] || exit 1
+python3 tools/langcheck.py || exit 1
 
 ZIG=""
 if python3 -m ziglang version >/dev/null 2>&1; then ZIG="python3 -m ziglang"; fi
@@ -27,6 +28,7 @@ if [ -n "$ZIG" ]; then
   $ZIG c++ -target x86_64-windows-gnu -std=c++17 -Wall -Wextra -Wshadow -DUNICODE -D_UNICODE \
        -Isrc -Ivendor/miniz -c src/bleach_ui.cpp -o /tmp/bleach_ui.obj || exit 1
   $ZIG c++ -target x86_64-windows-gnu -std=c++17 -Wall -Wextra -Isrc -Ivendor/miniz -c src/bleach_core.cpp -o /tmp/bleach_core.obj || exit 1
+  $ZIG c++ -target x86_64-windows-gnu -std=c++17 -Wall -Wextra -Isrc -c src/lang.cpp -o /tmp/lang.obj || exit 1
   (cd src && $ZIG rc /i . -- bleach.rc /tmp/bleach.res) || exit 1
   echo "  окна и ресурсы: ok (настоящие заголовки Windows)"
 else
@@ -36,7 +38,7 @@ fi
 B=/tmp/bleach_check; mkdir -p $B
 gcc -O1 -w -Ivendor/miniz -c vendor/miniz/miniz_tinfl.c -o $B/tinfl.o || exit 1
 g++ -std=c++17 -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=undefined -Wall -Wextra -Wshadow \
-    -Isrc -Ivendor/miniz src/tam_formats.cpp src/tam_assemble.cpp src/tam_anim.cpp src/bleach_core.cpp \
+    -Isrc -Ivendor/miniz src/tam_formats.cpp src/tam_assemble.cpp src/tam_anim.cpp src/bleach_core.cpp src/lang.cpp \
     tools/bleachdump.cpp $B/tinfl.o -o $B/bleachdump || exit 1
 python3 tests/make_samples.py $B/samples >/dev/null || exit 1
 S=$B/samples
@@ -55,8 +57,13 @@ S=$B/samples
   $B/bleachdump $S/garganta.cat raw.tmo $S/pl999_cos00_00.tmd2 | tail -4
   $B/bleachdump $S/unknown.bin unknown#1 $S/pl999_cos00_00.tmd2 | tail -4
   $B/bleachdump --find $S $S/pl999_cos00_00.tmd2
+  $B/bleachdump $S/garganta.cat "*" $S/pl999_cos00_00.tmd2 | grep "MERGED\|кадров\|F0"
   cp $S/unknown.bin $S/pl999_fx.bin; $B/bleachdump --find $S $S/pl999_cos00_00.tmd2 | grep "pl999_fx\|FIND"; rm -f $S/pl999_fx.bin
 } > $B/out.txt 2>&1 || { cat $B/out.txt; exit 1; }
+# английский режим: в выводе не должно остаться кириллицы
+BLEACH_LANG=en $B/bleachdump $S/pl999.tactpkg idle_delta $S/pl999_cos00_00.tmd2 $S/pl999_face00_00.tmd2 > $B/en.txt 2>&1
+if grep -q '[А-Яа-я]' $B/en.txt; then echo "  КИРИЛЛИЦА В АНГЛИЙСКОМ ВЫВОДЕ:"; grep '[А-Яа-я]' $B/en.txt | head; exit 1; fi
+echo "  английский вывод: ok"
 if [ "$1" = "--update" ]; then cp $B/out.txt tests/expected.txt; echo "  эталон обновлён"; exit 0; fi
 if cmp -s $B/out.txt tests/expected.txt; then echo "  читатели: вывод совпал с эталоном ($(wc -l < tests/expected.txt) строк)"
 else echo "  ВЫВОД ОТЛИЧАЕТСЯ:"; diff tests/expected.txt $B/out.txt | head -20; exit 1; fi

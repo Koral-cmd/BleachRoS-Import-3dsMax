@@ -32,6 +32,7 @@ add_library(tamcore STATIC
     src/tam_assemble.h src/tam_assemble.cpp
     src/tam_anim.h src/tam_anim.cpp
     src/bleach_core.h src/bleach_core.cpp
+    src/lang.h src/lang.cpp src/lang_en.inc
     vendor/miniz/miniz_tinfl.c)
 target_include_directories(tamcore PUBLIC src vendor/miniz)
 if(MSVC)

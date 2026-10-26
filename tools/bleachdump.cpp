@@ -17,6 +17,7 @@
 #include "tam_formats.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -93,6 +94,8 @@ int main(int argc, char** argv) {
 #if defined(_WIN32)
     SetConsoleOutputCP(65001);   // русский текст в консоли
 #endif
+    if (const char* l = std::getenv("BLEACH_LANG"))
+        if (std::string(l) == "en") i18n::SetLang(i18n::Lang::English);
     if (argc < 2) {
         std::printf("bleachdump <file.tmd2|file.tactpkg|file.lds> ...\n");
         return 1;
@@ -162,10 +165,24 @@ int main(int argc, char** argv) {
             for (int i = 3; i < argc; ++i) files.push_back(argv[i]);
             Skeleton skel;
             if (DumpModels(files, &skel) != 0) return 1;
+            // "*" = все клипы пакета одновременно (как "Одновременно (1 клип)" в плагине)
+            Tmo all;
+            if (clipName == "*") {
+                std::vector<Tmo> v(p.clips.size());
+                std::vector<std::string> names;
+                for (size_t i = 0; i < p.clips.size(); ++i) {
+                    if (!p.Clip(i, v[i], err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+                    names.push_back(v[i].name);
+                }
+                all = MergeClips(v, CommonClipName(names));
+                std::printf("MERGED %s bones=%zu length=%d\n", all.name.c_str(), all.hashes.size(), all.length);
+            }
             for (size_t i = 0; i < p.clips.size(); ++i) {
-                if (p.clips[i].name != clipName) continue;
+                if (clipName != "*" && p.clips[i].name != clipName) continue;
+                if (clipName == "*" && i > 0) break;
                 Tmo t;
-                if (!p.Clip(i, t, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
+                if (clipName == "*") t = all;
+                else if (!p.Clip(i, t, err)) { std::printf("ERROR %s\n", err.c_str()); return 1; }
                 AnimSettings s;
                 const ClipMatch m = MatchClip(t, skel, s);
                 std::printf("%s\n", DescribeMatch(t, m).c_str());

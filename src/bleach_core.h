@@ -3,6 +3,7 @@
 //  папки, настройки, лог, поиск файлов игры, имена персонажей.
 // ============================================================
 #pragma once
+#include "lang.h"
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -36,6 +37,9 @@ struct Settings {
     void Set(const std::string& k, const std::string& val) { v[k] = val; }
     void SetInt(const std::string& k, int val) { v[k] = std::to_string(val); }
 };
+
+// Язык интерфейса из настроек (lang: 0 = как в Windows, 1 = русский, 2 = английский).
+void ApplyLanguage();
 
 // ---- игра ----
 struct GameFile {
