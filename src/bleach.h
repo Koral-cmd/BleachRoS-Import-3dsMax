@@ -10,8 +10,8 @@
 
 #include <string>
 
-#define BLEACHIMPORT_VERSION      143
-#define BLEACHIMPORT_VERSION_STR  _T("1.4.3")
+#define BLEACHIMPORT_VERSION      144
+#define BLEACHIMPORT_VERSION_STR  _T("1.4.4")
 
 // Собственные ID (сгенерированы один раз, больше не менять).
 #define BLEACHIMPORT_SCENE_CLASS_ID  Class_ID(0x4c1e7a93, 0x2b8d61f5)

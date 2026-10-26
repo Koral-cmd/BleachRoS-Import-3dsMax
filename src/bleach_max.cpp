@@ -888,15 +888,33 @@ std::wstring ScriptPath(const std::wstring& p) {
 
 // Блок последовательностей на rootNode (WhiteoutDex или наследие NeoDex) -> список.
 // false: блока нет или он пустой (тогда правда - наша запись).
+// Блок последовательностей на rootNode: первый CA с параметром seqNames
+// (WhiteoutDexSequenceData раньше NeoDexSequenceData). Читается сам блок, а не
+// rootNode.seqNames - при двух блоках такое имя неоднозначно и падает.
+const wchar_t* kFindSeqCA =
+    L" fn bleachSeqCAs = (\n"
+    L"  local r = #(), legacy = #()\n"
+    L"  for i = 1 to (custAttributes.count rootNode) do (\n"
+    L"   local ca = custAttributes.get rootNode i\n"
+    L"   if (try (isProperty ca #seqNames) catch (false)) do (\n"
+    L"    if (try (ca.name == \"WhiteoutDexSequenceData\") catch (false)) then append r ca else append legacy ca)\n"
+    L"  )\n"
+    L"  join r legacy\n"
+    L"  r\n"
+    L" )\n";
+
 bool PullSceneSequences(std::vector<Loaded>& out) {
     const std::wstring file = DataDir() + L"\\seq_pull.txt";
     DeleteFileW2(file);
-    std::wstring s = L"(\n local n = (try (rootNode.seqNames.count) catch (-1))\n"
+    std::wstring s = std::wstring(L"(\n") + kFindSeqCA +
+                     L" local cas = bleachSeqCAs()\n"
+                     L" local ca = (if cas.count > 0 then cas[1] else undefined)\n"
+                     L" local n = (if ca == undefined then -1 else (try (ca.seqNames.count) catch (-1)))\n"
                      L" if n > 0 do (\n  local f = undefined\n"
                      L"  try (f = createFile " + ScriptPath(file) + L" encoding:#utf8 writeBOM:false) catch (f = createFile " + ScriptPath(file) + L")\n"
                      L"  for i = 1 to n do (\n"
-                     L"   local nl = (try (rootNode.nonLooping[i]) catch (false))\n"
-                     L"   format \"%\\t%\\t%\\t%\\n\" rootNode.seqNames[i] rootNode.startFrames[i] rootNode.endFrames[i] (if nl == true then 1 else 0) to:f\n"
+                     L"   local nl = (try (ca.nonLooping[i]) catch (false))\n"
+                     L"   format \"%\\t%\\t%\\t%\\n\" ca.seqNames[i] ca.startFrames[i] ca.endFrames[i] (if nl == true then 1 else 0) to:f\n"
                      L"  )\n  close f\n )\n OK\n)\n";
     if (!RunScript(s)) return false;
     const std::string txt = ReadTextFile(file);
@@ -948,20 +966,21 @@ bool PublishSequences(const std::vector<Loaded>& clips) {
         loops += std::wstring(sep) + (clips[i].nonLooping ? L"true" : L"false");
     }
     std::wstring s =
-        L"(\n local errs = \"\"\n"
+        std::wstring(L"(\n local errs = \"\"\n") + kFindSeqCA +
         L" local nN = #(" + names + L"), nS = #(" + starts + L"), nE = #(" + ends + L"), nL = #(" + loops + L")\n"
         L" local wdx = (try (::WdxSequenceStorage != undefined) catch (false))\n"
-        L" if wdx do try (::WdxSequenceStorage.ensureCA()) catch (errs += \"ensureCA: \" + (getCurrentException()) + \"; \"; wdx = false)\n"
-        L" local hasCA = (try (rootNode.seqNames.count >= 0) catch (false))\n"
+        L" local cas = bleachSeqCAs()\n"
+        L" if cas.count == 0 and wdx do (try (::WdxSequenceStorage.ensureCA()) catch (errs += \"ensureCA: \" + (getCurrentException()) + \"; \"); cas = bleachSeqCAs())\n"
+        L" if cas.count == 0 and (try (::WdxSequenceCA != undefined) catch (false)) do (try (custAttributes.add rootNode ::WdxSequenceCA) catch (errs += \"add WdxSequenceCA: \" + (getCurrentException()) + \"; \"); cas = bleachSeqCAs())\n"
         L" local mode = \"notes\"\n"
         L" local back = -1\n"
-        L" if hasCA do (\n"
+        L" for ca in cas do (\n"
         L"  local oS = #(), oR = #(), oM = #(), oX = #(), oG = #()\n"
-        L"  try (oS = for v in rootNode.startFrames collect v) catch ()\n"
-        L"  try (oR = for v in rootNode.rarity collect v) catch ()\n"
-        L"  try (oM = for v in rootNode.moveSpeed collect v) catch ()\n"
-        L"  try (oX = for v in rootNode.seqExtents collect v) catch ()\n"
-        L"  try (oG = for v in rootNode.sharedGroup collect v) catch ()\n"
+        L"  try (oS = for v in ca.startFrames collect v) catch ()\n"
+        L"  try (oR = for v in ca.rarity collect v) catch ()\n"
+        L"  try (oM = for v in ca.moveSpeed collect v) catch ()\n"
+        L"  try (oX = for v in ca.seqExtents collect v) catch ()\n"
+        L"  try (oG = for v in ca.sharedGroup collect v) catch ()\n"
         L"  local nR = #(), nM = #(), nX = #(), nG = #()\n"
         L"  for i = 1 to nS.count do (\n"
         L"   local k = findItem oS nS[i]\n"
@@ -970,37 +989,47 @@ bool PublishSequences(const std::vector<Loaded>& clips) {
         L"   append nX (if k > 0 and k <= oX.count then (oX[k] as string) else \"\")\n"
         L"   append nG (if k > 0 and k <= oG.count then (oG[k] as string) else \"\")\n"
         L"  )\n"
-        L"  try (rootNode.seqNames = nN) catch (errs += \"seqNames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.startFrames = nS) catch (errs += \"startFrames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.endFrames = nE) catch (errs += \"endFrames: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.nonLooping = nL) catch (errs += \"nonLooping: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.rarity = nR) catch (errs += \"rarity: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.moveSpeed = nM) catch (errs += \"moveSpeed: \" + (getCurrentException()) + \"; \")\n"
-        L"  try (rootNode.seqExtents = nX) catch ()\n"
-        L"  try (rootNode.sharedGroup = nG) catch ()\n"
-        L"  back = (try (rootNode.seqNames.count) catch (-1))\n"
-        L"  if back == nN.count then (\n"
-        L"   try (while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)) catch ()\n"
-        L"   mode = (if wdx then \"wdx\" else \"ca\")\n"
-        L"  )\n"
+        L"  try (ca.seqNames = nN) catch (errs += \"seqNames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.startFrames = nS) catch (errs += \"startFrames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.endFrames = nE) catch (errs += \"endFrames: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.nonLooping = nL) catch (errs += \"nonLooping: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.rarity = nR) catch (errs += \"rarity: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.moveSpeed = nM) catch (errs += \"moveSpeed: \" + (getCurrentException()) + \"; \")\n"
+        L"  try (ca.seqExtents = nX) catch ()\n"
+        L"  try (ca.sharedGroup = nG) catch ()\n"
+        L"  local c = (try (ca.seqNames.count) catch (-1))\n"
+        L"  if back == -1 or c < back do back = c\n"
         L" )\n"
-        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\\n%\\n%\\n\" mode back errs to:f\n close f\n OK\n)\n";
+        L" if cas.count > 0 and back == nN.count do (\n"
+        L"  try (while (numNoteTracks rootNode) != 0 do deleteNoteTrack rootNode (getNoteTrack rootNode 1)) catch ()\n"
+        L"  mode = (if wdx then \"wdx\" else \"ca\")\n"
+        L" )\n"
+        L" local diag = \"WdxSequenceStorage=\" + (wdx as string) + \" WdxSequenceCA=\" + ((try (::WdxSequenceCA != undefined) catch (false)) as string) + \" CA:\"\n"
+        L" for i = 1 to (custAttributes.count rootNode) do diag += \" \" + (try ((custAttributes.get rootNode i).name as string) catch (\"?\"))\n"
+        L" diag += \" seqCA=\" + (cas.count as string)\n"
+        L" local f = createFile " + ScriptPath(file) + L"\n format \"%\\n%\\n%\\n%\\n\" mode back diag errs to:f\n close f\n OK\n)\n";
     const bool ran = RunScript(s);
     const std::string res = ReadTextFile(file);
     DeleteFileW2(file);
-    std::string mode, back, errs;
+    std::vector<std::string> ln;
     {
-        size_t a1 = res.find('\n');
-        mode = res.substr(0, a1);
-        if (a1 != std::string::npos) {
-            const size_t a2 = res.find('\n', a1 + 1);
-            back = res.substr(a1 + 1, a2 == std::string::npos ? std::string::npos : a2 - a1 - 1);
-            if (a2 != std::string::npos) errs = res.substr(a2 + 1);
+        size_t p0 = 0;
+        while (p0 <= res.size() && ln.size() < 4) {
+            size_t e0 = res.find('\n', p0);
+            if (e0 == std::string::npos) e0 = res.size();
+            std::string x = res.substr(p0, e0 - p0);
+            while (!x.empty() && (x.back() == '\r' || x.back() == ' ')) x.pop_back();
+            ln.push_back(x);
+            p0 = e0 + 1;
         }
-        while (!mode.empty() && (mode.back() == '\r' || mode.back() == ' ')) mode.pop_back();
-        while (!errs.empty() && (errs.back() == '\n' || errs.back() == '\r')) errs.pop_back();
+        while (ln.size() < 4) ln.push_back(std::string());
     }
-    if (!ran || mode.empty()) mode = "notes";
+    std::string mode = ln[0], back = ln[1], errs = ln[3];
+    if (!ln[2].empty()) Log("  %s", ln[2].c_str());
+    if (!ran || mode.empty()) {
+        if (!ran) Log("%s", TR("  [!] скрипт записи последовательностей не выполнился"));
+        mode = "notes";
+    }
     if (!errs.empty()) Log(TR("  [!] запись последовательностей: %s"), errs.c_str());
     bool ok = true;
     if (mode.compare(0, 5, "notes") == 0) {
